@@ -45,6 +45,7 @@ import { ThreadGuestPendingMessage, useThreadGuestShare } from "./ThreadGuestSha
 import { LinkRequestCard } from "./LinkRequestCard";
 import { FeedbackRequestCard } from "./FeedbackRequestCard";
 import { SecretRequestCard } from "./SecretRequestCard";
+import { AkenoWorkingIcon } from "../../components/AkenoWorkingIcon";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import {
   WorktreePreparingHeader,
@@ -1843,6 +1844,17 @@ function compactionLabel(
   return text.replace(/ (→|tokens)/g, "\u00A0$1").replace(/→ /g, "→\u00A0");
 }
 
+function formatRunFoldDisplayLabel(label: string): string {
+  const trimmed = label.trim();
+  if (/^(worked|continued)\s+for\s+/i.test(trimmed)) {
+    return trimmed.replace(/^(worked|continued)\s+for\s+/i, "");
+  }
+  if (/^(worked|continued)$/i.test(trimmed)) {
+    return "";
+  }
+  return trimmed;
+}
+
 function RunFoldWorking(props: {
   environmentId: EnvironmentId;
   startedAt: string;
@@ -1852,24 +1864,32 @@ function RunFoldWorking(props: {
   const seconds = Math.floor((nowMs - Date.parse(props.startedAt)) / 1_000);
   const gt = useGT();
   const messages = useMessages();
+  const [tapCount, setTapCount] = useState(0);
+  const duration =
+    seconds > 0 ? formatDuration(seconds * 1_000, messages) : gt("{seconds}s", { seconds: 0 });
+  const a11yLabel = gt("Working for {duration}", { duration });
+
   return (
-    <View
-      className="min-h-11 min-w-0 flex-1 flex-row items-center"
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      onPress={() => {
+        void Haptics.selectionAsync();
+        setTapCount((count) => count + 1);
+      }}
+      hitSlop={4}
+      className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2"
       style={{ minHeight: Math.max(TURN_FOLD_HEIGHT - 3.5, props.rowSizing.estimatedRowHeight) }}
     >
+      <AkenoWorkingIcon active tapCount={tapCount} size={24} />
       <Text
         key={props.rowSizing.textSizeKey}
         numberOfLines={1}
         className="shrink font-t3-medium text-sm tabular-nums text-foreground-muted"
       >
-        {gt("Working for {duration}", {
-          duration:
-            seconds > 0
-              ? formatDuration(seconds * 1_000, messages)
-              : gt("{seconds}s", { seconds: 0 }),
-        })}
+        {duration}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -1892,6 +1912,7 @@ function RunFoldButton({
   const loadWork = useAtomCommand(threadEnvironment.loadEarlierHistory, { reportFailure: false });
   const anchorsKey = entry.deferredWorkItemIds?.join("\n") ?? "";
   const [failed, setFailed] = useState(false);
+  const [tapCount, setTapCount] = useState(0);
   const load = () => {
     if (!anchorsKey) return;
     void Promise.all(
@@ -1912,29 +1933,36 @@ function RunFoldButton({
   const error = anchorsKey && failed ? gt("Couldn't load work. Tap to retry.") : null;
   const loading = entry.expanded && anchorsKey !== "" && !failed;
   const toggle = () => {
+    void Haptics.selectionAsync();
+    setTapCount((count) => count + 1);
     setFailed(false);
     if (error && entry.expanded) load();
     else onToggle(entry.runId);
   };
+  const displayLabel = formatRunFoldDisplayLabel(entry.label);
 
   return (
     <View className="min-w-0 flex-1">
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel={entry.label}
         accessibilityState={{ expanded: entry.expanded, busy: loading }}
         onPress={toggle}
         hitSlop={4}
         className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2"
         style={{ minHeight: Math.max(TURN_FOLD_HEIGHT - 3.5, rowSizing.estimatedRowHeight) }}
       >
-        <Text
-          key={rowSizing.textSizeKey}
-          numberOfLines={1}
-          className="shrink font-t3-medium text-sm tabular-nums text-foreground-muted"
-        >
-          {entry.label}
-          {error ? ` · ${error}` : ""}
-        </Text>
+        <AkenoWorkingIcon active={false} tapCount={tapCount} size={24} />
+        {displayLabel || error ? (
+          <Text
+            key={rowSizing.textSizeKey}
+            numberOfLines={1}
+            className="shrink font-t3-medium text-sm tabular-nums text-foreground-muted"
+          >
+            {displayLabel}
+            {error ? (displayLabel ? ` · ${error}` : error) : ""}
+          </Text>
+        ) : null}
         <ThreadDisclosureChevron
           expanded={entry.expanded}
           collapsedDirection="right"

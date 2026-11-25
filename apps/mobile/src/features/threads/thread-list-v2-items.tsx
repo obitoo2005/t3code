@@ -48,6 +48,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { Menu } from "../../components/ui/Menu";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
+import { SessionAvatarIcon } from "../../components/SessionAvatarIcon";
 import {
   ProviderIcon,
   ProviderInstanceIcon,
@@ -541,11 +542,21 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
     [onDeletePendingTask, pendingTask],
   );
 
-  const titleTextInset = props.project ? projectIconSize + 8 : 0;
+  const sessionIconSize = Math.max(26, Math.round(projectIconSize * 1.15));
+  const showAndroidAvatar = Platform.OS === "android";
+  const titleTextInset = showAndroidAvatar
+    ? sessionIconSize + 10
+    : props.project
+      ? projectIconSize + 8
+      : 0;
   const rowContent = (
     <>
-      <View className="flex-row items-start gap-2">
-        {props.project ? (
+      <View className={showAndroidAvatar ? "flex-row items-start gap-2.5" : "flex-row items-start gap-2"}>
+        {showAndroidAvatar ? (
+          <View className="justify-center" style={{ minHeight: titleLineHeight }}>
+            <SessionAvatarIcon seed={pendingTask.key} size={sessionIconSize} />
+          </View>
+        ) : props.project ? (
           <View className="justify-center" style={{ height: titleLineHeight }}>
             <ProjectFavicon
               environmentId={pendingTask.environmentId}
@@ -1379,11 +1390,21 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       ? primaryAction.swipeHint
       : primaryAction.swipeSnoozeHint;
 
-  const titleTextInset = props.project ? projectIconSize + 8 : 0;
+  const sessionIconSize = Math.max(26, Math.round(projectIconSize * 1.15));
+  const showAndroidAvatar = Platform.OS === "android";
+  const titleTextInset = showAndroidAvatar
+    ? sessionIconSize + 10
+    : props.project
+      ? projectIconSize + 8
+      : 0;
   const cardContent = (
     <>
-      <View className="flex-row items-start gap-2">
-        {props.project ? (
+      <View className={showAndroidAvatar ? "flex-row items-start gap-2.5" : "flex-row items-start gap-2"}>
+        {showAndroidAvatar ? (
+          <View className="justify-center" style={{ minHeight: titleLineHeight }}>
+            <SessionAvatarIcon seed={thread.id} size={sessionIconSize} />
+          </View>
+        ) : props.project ? (
           <View className="justify-center" style={{ height: titleLineHeight }}>
             <ProjectFavicon
               environmentId={thread.environmentId}
