@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { I18nManager, Platform, Pressable, View } from "react-native";
 import Animated, {
+  ReduceMotion,
   useAnimatedStyle,
   useDerivedValue,
   useReducedMotion,
+  withSpring,
   withTiming,
 } from "react-native-reanimated";
 
@@ -26,7 +28,16 @@ export function SegmentedControl<Value extends string | number>(
   const direction = I18nManager.isRTL ? -1 : 1;
   // The index animates, not the offset, so a resize moves the selection without sliding it.
   const selectedPosition = useDerivedValue(() =>
-    withTiming(selectedIndex, { duration: reduceMotion ? 0 : 160 }),
+    reduceMotion
+      ? selectedIndex
+      : Platform.OS === "android"
+        ? withSpring(selectedIndex, {
+            damping: 24,
+            stiffness: 380,
+            mass: 0.72,
+            reduceMotion: ReduceMotion.System,
+          })
+        : withTiming(selectedIndex, { duration: 160 }),
   );
   const selectionStyle = useAnimatedStyle(() => ({
     width: segmentWidth,
@@ -39,7 +50,9 @@ export function SegmentedControl<Value extends string | number>(
     Platform.OS,
     themeId,
   );
-  const minHeight = props.size === "compact" ? 32 : Platform.OS === "android" ? 40 : 36;
+  const isAndroidGlass = Platform.OS === "android";
+  const isDark = colorScheme === "dark";
+  const minHeight = props.size === "compact" ? 32 : isAndroidGlass ? 40 : 36;
 
   return (
     <View collapsable={false} className={props.className}>
@@ -48,7 +61,18 @@ export function SegmentedControl<Value extends string | number>(
         className="flex-row rounded-full p-[3px]"
         style={{
           minHeight,
-          backgroundColor: trackColor,
+          backgroundColor: isAndroidGlass
+            ? isDark
+              ? "rgba(24, 24, 30, 0.78)"
+              : "rgba(244, 244, 248, 0.88)"
+            : trackColor,
+          ...(isAndroidGlass
+            ? {
+                borderWidth: 1,
+                borderColor: isDark ? "rgba(255, 255, 255, 0.11)" : "rgba(0, 0, 0, 0.08)",
+                borderTopColor: isDark ? "rgba(255, 255, 255, 0.18)" : "rgba(255, 255, 255, 0.90)",
+              }
+            : null),
         }}
       >
         {selectedIndex >= 0 && width > 0 ? (
@@ -57,7 +81,20 @@ export function SegmentedControl<Value extends string | number>(
             className="absolute bottom-[3px] start-[3px] top-[3px] rounded-full"
             style={[
               {
-                backgroundColor: selectedColor,
+                backgroundColor: isAndroidGlass
+                  ? isDark
+                    ? "rgba(255, 255, 255, 0.14)"
+                    : "rgba(255, 255, 255, 0.96)"
+                  : selectedColor,
+                ...(isAndroidGlass
+                  ? {
+                      borderWidth: 1,
+                      borderColor: isDark ? "rgba(255, 255, 255, 0.16)" : "rgba(0, 0, 0, 0.06)",
+                      borderTopColor: isDark
+                        ? "rgba(255, 255, 255, 0.28)"
+                        : "rgba(255, 255, 255, 1)",
+                    }
+                  : null),
               },
               selectionStyle,
             ]}

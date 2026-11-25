@@ -1,44 +1,45 @@
-import Constants from "expo-constants";
 import { Image } from "expo-image";
-import { msg, T, useMessages } from "gt-react-native";
+import { T } from "gt-react-native";
 import { View } from "react-native";
 
-import { AppText as Text } from "./ui/AppText";
 import { T3_CODE_BRAND_MARK_SOURCE } from "./brandAssets";
-
-const appVariant = Constants.expoConfig?.extra?.appVariant;
-const DEFAULT_STAGE_LABEL =
-  appVariant === "development"
-    ? msg("Dev", { $context: "app release stage badge" })
-    : appVariant === "preview"
-      ? msg("Preview", { $context: "app release stage badge" })
-      : msg("Beta", { $context: "app release stage badge" });
+import { AppText as Text } from "./ui/AppText";
 
 export function BrandMark(props: { readonly compact?: boolean; readonly stageLabel?: string }) {
-  const m = useMessages();
   const compact = props.compact ?? false;
-  const iconSize = compact ? 32 : 44;
-  const stageLabel = props.stageLabel ?? m(DEFAULT_STAGE_LABEL);
+  const iconSize = compact ? 36 : 48;
+  const radius = compact ? 10 : 14;
 
   return (
     <View className="flex-row items-center gap-3">
-      <Image
-        source={T3_CODE_BRAND_MARK_SOURCE}
-        accessibilityIgnoresInvertColors
+      <View
         style={{
           width: iconSize,
           height: iconSize,
-          borderRadius: compact ? 10 : 14,
+          borderRadius: radius,
+          overflow: "hidden",
+          borderWidth: 1,
+          borderColor: "rgba(255, 255, 255, 0.22)",
+          borderTopColor: "rgba(255, 255, 255, 0.34)",
         }}
-      />
+      >
+        <Image
+          source={T3_CODE_BRAND_MARK_SOURCE}
+          accessibilityIgnoresInvertColors
+          contentFit="cover"
+          style={{ width: "100%", height: "100%" }}
+        />
+      </View>
       <View className="gap-1">
         <View className="flex-row items-center gap-2">
-          <Text className="text-lg font-t3-bold tracking-[-0.4px] text-foreground">T3 Code</Text>
-          <View className="rounded-full bg-subtle px-2 py-1">
-            <Text className="text-3xs font-t3-bold tracking-[1.1px] uppercase text-foreground-muted">
-              {stageLabel}
-            </Text>
-          </View>
+          <Text className="text-lg font-t3-bold tracking-[-0.4px] text-foreground">Rias Code</Text>
+          {props.stageLabel ? (
+            <View className="rounded-full bg-subtle px-2 py-1">
+              <Text className="text-3xs font-t3-bold tracking-[1.1px] uppercase text-foreground-muted">
+                {props.stageLabel}
+              </Text>
+            </View>
+          ) : null}
         </View>
         {!compact ? (
           <Text className="text-xs font-medium text-foreground-muted">

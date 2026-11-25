@@ -67,15 +67,52 @@ export function returnToAndroidWorkspaceList(
   resetRootStack(navigation, () => ({ ...state, index, routes: state.routes.slice(0, index + 1) }));
 }
 
+const COMPACT_SLIDE_ROUTES = new Set([
+  "Thread",
+  "PullRequest",
+  "PullRequestGuideStop",
+  "PullRequestFile",
+  "PullRequestDiscussion",
+  "Issue",
+  "NewTaskProject",
+  "NewTaskEnvironment",
+  "NewTaskBranch",
+  "NewTaskRepositories",
+  "AddProject",
+  "AddProjectRepository",
+  "AddProjectDestination",
+  "AddProjectLocal",
+  "AddProjectNew",
+  "NewTaskFiles",
+  "NewTaskFile",
+  "NewTaskAttachment",
+  "ThreadTerminal",
+  "ThreadReview",
+  "ThreadFiles",
+  "ThreadFile",
+  "ThreadAttachment",
+  "WorkflowRun",
+]);
+
 // Split view: Thread, PullRequest, and a Settings page picked from the list swap the detail pane
 // rather than stack, so they don't animate. Pages opened from a Settings page crossfade inside the
 // pane's card; the default push edge-extends the incoming page, bleeding a stripe beside the list.
+// Compact phones: use crisp horizontal slide_from_right on pushed pages so they never transparently
+// cross-fade over the Home list (keeping Settings tab instant via its own `animation: "none"`).
 export function androidWorkspaceDestinationAnimation(
   route: { readonly key: string; readonly name: string },
   routes: readonly { readonly key: string; readonly name: string }[],
   usesSplitView: boolean,
 ) {
-  if (!usesSplitView) return undefined;
+  if (!usesSplitView) {
+    if (
+      COMPACT_SLIDE_ROUTES.has(route.name) ||
+      (route.name !== "Settings" && isSettingsRoute(route.name))
+    ) {
+      return "slide_from_right" as const;
+    }
+    return undefined;
+  }
   if (route.name === "Thread" || route.name === "PullRequest" || route.name === "Issue")
     return "none" as const;
   if (route.name === "Settings" || !isSettingsRoute(route.name)) return undefined;

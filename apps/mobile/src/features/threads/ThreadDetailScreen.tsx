@@ -120,7 +120,10 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { AndroidBlurTargetContext } from "../../components/ui/AndroidBlurTargetContext";
+import {
+  AndroidBlurTargetContext,
+  AndroidOverlayHeaderContext,
+} from "../../components/ui/AndroidBlurTargetContext";
 import { useBarOverlap } from "../../components/ui/useBarInset";
 import {
   useWorkspaceContentWidth,
@@ -1614,6 +1617,19 @@ function ThreadDetailBody(
       ) : (
         feedBody
       )}
+
+      {Platform.OS === "android" && props.header ? (
+        <View
+          pointerEvents="box-none"
+          style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }}
+        >
+          <AndroidOverlayHeaderContext value={true}>
+            <AndroidBlurTargetContext value={composerBlurTargetRef}>
+              {props.header}
+            </AndroidBlurTargetContext>
+          </AndroidOverlayHeaderContext>
+        </View>
+      ) : null}
 
       {showContent ? (
         <ThreadBrowserFloat

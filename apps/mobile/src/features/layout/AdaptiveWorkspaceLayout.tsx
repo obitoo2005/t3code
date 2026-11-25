@@ -802,7 +802,6 @@ function AdaptiveWorkspaceLayoutContent(
   const renderedRailWidth = useSharedValue(navigationRailWidth);
   const leavingWorkspacePage = useRef(false);
   const sidebarBlurTargetRef = useRef<ComponentRef<typeof View> | null>(null);
-  const contentBlurTargetRef = useRef<ComponentRef<typeof View> | null>(null);
   // The slide starts after the commit that lays the pane out, not in the press handler: Reanimated
   // commits the shadow tree every frame, and that starves a large React commit until it stops.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- animates the Reanimated rail and sidebar width shared values toward the layout's targets
@@ -1149,35 +1148,20 @@ function AdaptiveWorkspaceLayoutContent(
                       : safeAreaInsets
                 }
               >
-                {Platform.OS === "android" &&
-                floatingTabsEnabled &&
-                (compactAndroidSettings || (layout.usesSplitView && workspacePage)) ? (
-                  <BlurTargetView ref={contentBlurTargetRef} style={{ flex: 1 }}>
-                    <View className="flex-1">
-                      <PaneContext value="content">
-                        <SettingsWorkspaceLayout>{children}</SettingsWorkspaceLayout>
-                      </PaneContext>
-                    </View>
-                  </BlurTargetView>
-                ) : (
-                  <View className="flex-1">
-                    <PaneContext value="content">
-                      <SettingsWorkspaceLayout>{children}</SettingsWorkspaceLayout>
-                    </PaneContext>
-                  </View>
-                )}
+                {/* Keep one stable wrapper around children so switching to/from Settings never remounts the stack. */}
+                <View className="flex-1">
+                  <PaneContext value="content">
+                    <SettingsWorkspaceLayout>{children}</SettingsWorkspaceLayout>
+                  </PaneContext>
+                </View>
               </SafeAreaInsetsContext>
               {floatingTabsEnabled &&
               (compactAndroidSettings || (layout.usesSplitView && workspacePage)) ? (
-                <AndroidBlurTargetContext
-                  value={Platform.OS === "android" ? contentBlurTargetRef : null}
-                >
-                  <FloatingWorkspaceTabs
-                    paneWidth={layout.usesSplitView ? (layout.listPaneWidth ?? undefined) : undefined}
-                    fillWidth={compactAndroidSettings}
-                    onNewThread={handleStartNewTask}
-                  />
-                </AndroidBlurTargetContext>
+                <FloatingWorkspaceTabs
+                  paneWidth={layout.usesSplitView ? (layout.listPaneWidth ?? undefined) : undefined}
+                  fillWidth={compactAndroidSettings}
+                  onNewThread={handleStartNewTask}
+                />
               ) : compactAndroidSettings ? (
                 <AndroidWorkspaceNavigation onNewThread={handleStartNewTask} />
               ) : null}

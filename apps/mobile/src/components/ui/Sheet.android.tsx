@@ -10,7 +10,7 @@ import type { SheetProps } from "./Sheet.types";
 export type { SheetProps } from "./Sheet.types";
 
 export function Sheet(props: SheetProps) {
-  const containerStyle = useResolveClassNames("bg-header");
+  const containerStyle = useResolveClassNames("bg-screen");
   const [isOpen, setIsOpen] = useState(true);
   return (
     <FormSheet
@@ -25,7 +25,7 @@ export function Sheet(props: SheetProps) {
       <BottomSheetContext value>
         <RoutedFormSheetContext value={false}>
           {/* Android FormSheet does not bound flex children. */}
-          <View collapsable={false} className="absolute inset-0 bg-header">
+          <View collapsable={false} className="absolute inset-0 bg-screen">
             <AppBar
               sheet
               title={props.title}
@@ -35,7 +35,7 @@ export function Sheet(props: SheetProps) {
             <ScreenContent>{props.children}</ScreenContent>
             <View
               pointerEvents="none"
-              className="absolute top-1 h-1 w-8 self-center rounded-full bg-header-foreground/40"
+              className="absolute top-1.5 h-1 w-9 self-center rounded-full bg-foreground/30"
             />
           </View>
         </RoutedFormSheetContext>

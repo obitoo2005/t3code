@@ -84,16 +84,37 @@ export function GlassSurface({
     );
   }
 
+  const androidGlassRim: ViewStyle | undefined =
+    Platform.OS === "android" && chrome !== "none"
+      ? {
+          borderWidth: 1,
+          borderColor: isDarkMode ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.09)",
+          borderTopColor: isDarkMode ? "rgba(255, 255, 255, 0.28)" : "rgba(255, 255, 255, 0.94)",
+          borderBottomColor: isDarkMode ? "rgba(255, 255, 255, 0.07)" : "rgba(0, 0, 0, 0.11)",
+          boxShadow: [
+            {
+              offsetX: 0,
+              offsetY: 10,
+              blurRadius: 28,
+              spreadDistance: -4,
+              color: isDarkMode ? "rgba(0, 0, 0, 0.50)" : "rgba(0, 0, 0, 0.14)",
+            },
+          ],
+        }
+      : undefined;
+
   return (
     <View
       {...props}
       ref={ref}
       className={cn(
-        chrome === "none" ? "border-0 border-transparent" : "border border-border",
+        chrome === "none" || Platform.OS === "android"
+          ? "border-0 border-transparent"
+          : "border border-border",
         fallbackClassName,
         className,
       )}
-      style={[surfaceStyle, style]}
+      style={[surfaceStyle, androidGlassRim, style]}
     >
       <GlassBackdrop fallbackColor={fallbackColor} />
       {children}

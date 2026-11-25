@@ -1,7 +1,8 @@
 import { GlassView } from "expo-glass-effect";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 import { withUniwind } from "uniwind";
 
+import { useAppearancePreferences } from "../../features/settings/appearance/AppearancePreferencesProvider";
 import { cn } from "../../lib/cn";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { AppText } from "./AppText";
@@ -24,9 +25,12 @@ export function Chip(props: {
   readonly accessibilityLabel?: string;
   readonly disabled?: boolean;
 }) {
+  const { themeAppearance } = useAppearancePreferences();
+  const isDark = (props.colorScheme ?? themeAppearance) === "dark";
+  const isAndroidGlass = Platform.OS === "android";
   const small = props.size === "small";
   const layout = cn(
-    "flex-row items-center gap-1.5 rounded-2xl px-3",
+    "flex-row items-center gap-1.5 rounded-full px-3",
     small ? "py-1" : "min-h-8 py-1.5",
   );
   const iconColor = props.selected ? "accent-primary-foreground" : "accent-icon-muted";
@@ -66,8 +70,33 @@ export function Chip(props: {
       <View
         className={cn(
           layout,
-          props.selected ? "bg-primary" : small ? "bg-grouped-card" : "bg-subtle",
+          props.selected
+            ? "bg-primary"
+            : isAndroidGlass
+              ? undefined
+              : small
+                ? "bg-grouped-card"
+                : "bg-subtle",
         )}
+        style={
+          isAndroidGlass
+            ? props.selected
+              ? {
+                  borderWidth: 1,
+                  borderColor: isDark ? "rgba(255, 255, 255, 0.20)" : "rgba(0, 0, 0, 0.08)",
+                  borderTopColor: isDark ? "rgba(255, 255, 255, 0.34)" : "rgba(255, 255, 255, 0.7)",
+                }
+              : {
+                  backgroundColor: isDark
+                    ? "rgba(26, 26, 32, 0.84)"
+                    : "rgba(248, 248, 252, 0.90)",
+                  borderWidth: 1,
+                  borderColor: isDark ? "rgba(255, 255, 255, 0.13)" : "rgba(0, 0, 0, 0.09)",
+                  borderTopColor: isDark ? "rgba(255, 255, 255, 0.24)" : "rgba(255, 255, 255, 0.95)",
+                  borderBottomColor: isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.11)",
+                }
+            : undefined
+        }
       >
         {content}
       </View>

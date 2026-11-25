@@ -1,17 +1,14 @@
-import { NATIVE_WORKSPACE_COLUMNS_SUPPORTED } from "../native/NativeWorkspaceColumns";
-import Constants from "expo-constants";
+import { Image } from "expo-image";
 import { useGT } from "gt-react-native";
-import { useState } from "react";
 import { Platform, View } from "react-native";
 
-import { AppText as Text } from "./ui/AppText";
-import { T3Wordmark } from "./T3Wordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
-import { resolveMobileStageLabel } from "../lib/mobileBranding";
+import { NATIVE_WORKSPACE_COLUMNS_SUPPORTED } from "../native/NativeWorkspaceColumns";
+import { T3_CODE_BRAND_MARK_SOURCE } from "./brandAssets";
+import { AppText as Text } from "./ui/AppText";
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
 
 const BRAND_MAX_FONT_SCALE = 1.4;
-const WORDMARK_SUFFIX = "Code";
 
 export function brandTitleOffset(): number {
   if (Platform.OS !== "ios") return 0;
@@ -22,75 +19,80 @@ export function CompactBrandTitle(
   props: {
     readonly allowFontScaling?: boolean;
     readonly accessibilityLabel?: string;
-    /** Fills the row and hides the stage badge when the full title does not fit. */
+    /** Fills the row and keeps the brand mark cleanly sized when width is constrained. */
     readonly fit?: boolean;
   } = {},
 ) {
   const gt = useGT();
-  const stageLabel = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
   const titleOffset = brandTitleOffset();
   const { scale } = useAndroidControlSizing();
-  const [availableWidth, setAvailableWidth] = useState<number | null>(null);
-  // Measured only while the badge shows, so hiding it does not make it look like it fits.
-  const [fullWidth, setFullWidth] = useState<number | null>(null);
-  const showStage =
-    !props.fit || availableWidth === null || fullWidth === null || fullWidth <= availableWidth;
+  const clampedScale = Math.min(scale, 1.15);
+  const iconSize = Math.round(32 * clampedScale);
+  const iconRadius = Math.round(9 * clampedScale);
 
   const title = (
     <View
-      onLayout={
-        props.fit && showStage ? (event) => setFullWidth(event.nativeEvent.layout.width) : undefined
-      }
       aria-level={1}
-      accessibilityLabel={props.accessibilityLabel ?? gt("T3 Code, Threads")}
+      accessibilityLabel={props.accessibilityLabel ?? gt("Rias Code, Threads")}
       accessible
       role="heading"
-      className="flex-row items-center gap-1.5"
+      className="flex-row items-center"
       style={[
-        { marginLeft: titleOffset },
-        Platform.OS === "android" && { gap: 5.25 * scale },
-        props.fit && { flexShrink: 0 },
+        { marginLeft: titleOffset, gap: Math.round(9 * clampedScale) },
+        props.fit && { flexShrink: 1 },
       ]}
     >
-      <T3Wordmark colorClassName="accent-icon" height={Math.round(15 * scale)} />
-      {/* A logo beside a fixed-size wordmark: it may grow with Dynamic Type, not crowd the bar. */}
-      <Text
-        allowFontScaling={props.allowFontScaling}
-        maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
-        className="font-t3-medium text-foreground-muted"
-        style={{ fontSize: 21 * scale, letterSpacing: -0.5 * scale }}
+      <View
+        style={{
+          width: iconSize,
+          height: iconSize,
+          borderRadius: iconRadius,
+          overflow: "hidden",
+          borderWidth: 1,
+          borderColor: "rgba(255, 255, 255, 0.22)",
+          borderTopColor: "rgba(255, 255, 255, 0.34)",
+          boxShadow: [
+            {
+              offsetX: 0,
+              offsetY: 3,
+              blurRadius: 10,
+              color: "rgba(197, 1, 46, 0.28)",
+            },
+          ],
+        }}
       >
-        {WORDMARK_SUFFIX}
-      </Text>
-      {showStage ? (
-        <View
-          className="rounded-full bg-subtle px-1.5 py-0.5"
-          style={
-            Platform.OS === "android"
-              ? { paddingHorizontal: 5.25 * scale, paddingVertical: 1.75 * scale }
-              : undefined
-          }
+        <Image
+          source={T3_CODE_BRAND_MARK_SOURCE}
+          accessibilityIgnoresInvertColors
+          contentFit="cover"
+          style={{ width: "100%", height: "100%" }}
+        />
+      </View>
+      <View className="flex-row items-baseline" style={{ gap: Math.round(5 * clampedScale) }}>
+        <Text
+          allowFontScaling={props.allowFontScaling}
+          maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
+          numberOfLines={1}
+          className="font-t3-bold text-foreground"
+          style={{ fontSize: 20 * clampedScale, letterSpacing: -0.45 * clampedScale }}
         >
-          <Text
-            allowFontScaling={props.allowFontScaling}
-            maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
-            className="font-t3-bold text-foreground-muted uppercase"
-            style={{ fontSize: 9 * scale, letterSpacing: 0.9 * scale }}
-          >
-            {stageLabel}
-          </Text>
-        </View>
-      ) : null}
+          Rias
+        </Text>
+        <Text
+          allowFontScaling={props.allowFontScaling}
+          maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
+          numberOfLines={1}
+          className="font-t3-medium text-foreground-muted"
+          style={{ fontSize: 20 * clampedScale, letterSpacing: -0.45 * clampedScale }}
+        >
+          Code
+        </Text>
+      </View>
     </View>
   );
 
   return props.fit ? (
-    <View
-      className="min-w-0 flex-1 flex-row items-center"
-      onLayout={(event) => setAvailableWidth(event.nativeEvent.layout.width)}
-    >
-      {title}
-    </View>
+    <View className="min-w-0 flex-1 flex-row items-center">{title}</View>
   ) : (
     title
   );

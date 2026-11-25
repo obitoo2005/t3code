@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BrandMark } from "../../components/BrandMark";
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { useDeadlinePassed } from "../../lib/clock";
@@ -34,6 +35,9 @@ export function SettingsAboutRouteScreen() {
         contentContainerClassName="gap-6 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
+        <View className="px-1 pt-1">
+          <BrandMark />
+        </View>
         <AppSettingsSection />
       </ScrollView>
     </SettingsScreen>

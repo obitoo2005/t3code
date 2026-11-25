@@ -2,38 +2,57 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 
-// Every click handler a button was rendered with, so a test can deliver a
+// Every press handler a button was rendered with, so a test can deliver a
 // native event that was dispatched against an older render.
 const renderedClicks = vi.hoisted(() => [] as Array<() => void>);
 
-vi.mock("@expo/ui/jetpack-compose", () => {
-  const Slot = (props: { readonly children?: ReactNode }) => <div>{props.children}</div>;
-  const Button = (props: { readonly children?: ReactNode; readonly onClick?: () => void }) => {
-    if (props.onClick) renderedClicks.push(props.onClick);
-    return <button onClick={props.onClick}>{props.children}</button>;
-  };
-  return {
-    AlertDialog: Object.assign(Slot, {
-      Title: Slot,
-      Text: Slot,
-      DismissButton: Slot,
-      ConfirmButton: Slot,
-    }),
-    Button,
-    OutlinedButton: Button,
-    Column: Slot,
-    FlowRow: Slot,
-    Icon: () => null,
-    OutlinedTextField: Object.assign(Slot, { Label: Slot, Placeholder: Slot }),
-    Text: Slot,
-    useNativeState: (value: unknown) => ({ get: () => value }),
-  };
-});
-vi.mock("./NativeThemeHost.android", () => ({
-  NativeThemeHost: (props: { readonly children?: ReactNode }) => <div>{props.children}</div>,
+vi.mock("react-native", () => ({
+  KeyboardAvoidingView: (props: { readonly children?: ReactNode }) => <div>{props.children}</div>,
+  Modal: (props: { readonly children?: ReactNode }) => <div>{props.children}</div>,
+  Pressable: (props: {
+    readonly children?: ReactNode;
+    readonly accessibilityRole?: string;
+    readonly onPress?: () => void;
+  }) => {
+    if (props.accessibilityRole === "button" && props.onPress) {
+      renderedClicks.push(props.onPress);
+    }
+    return (
+      <button type="button" onClick={props.onPress}>
+        {props.children}
+      </button>
+    );
+  },
+  ScrollView: (props: { readonly children?: ReactNode }) => <div>{props.children}</div>,
+  StyleSheet: { absoluteFill: {} },
+  TextInput: (props: { readonly value?: string }) => <input readOnly value={props.value ?? ""} />,
+  View: (props: { readonly children?: ReactNode }) => <div>{props.children}</div>,
+}));
+vi.mock("react-native-reanimated", () => ({
+  default: {
+    View: (props: { readonly children?: ReactNode }) => <div>{props.children}</div>,
+  },
+  Easing: { out: () => () => 0, cubic: () => 0 },
+  ReduceMotion: { System: "system" },
+  useAnimatedStyle: () => ({}),
+  useSharedValue: (initial: number) => ({ value: initial, set: () => {} }),
+  withSpring: (value: number) => value,
+  withTiming: (value: number) => value,
+}));
+vi.mock("expo-haptics", () => ({
+  selectionAsync: () => Promise.resolve(),
+}));
+vi.mock("./AndroidGlassSurface.android", () => ({
+  AndroidGlassSurface: (props: { readonly children?: ReactNode }) => <div>{props.children}</div>,
+}));
+vi.mock("./AppSymbol", () => ({
+  SymbolView: () => null,
+}));
+vi.mock("./AppText", () => ({
+  AppText: (props: { readonly children?: ReactNode }) => <span>{props.children}</span>,
 }));
 vi.mock("../../features/settings/appearance/AppearancePreferencesProvider", () => ({
-  useAppearancePreferences: () => ({ themeVariables: {} }),
+  useAppearancePreferences: () => ({ themeAppearance: "dark", themeVariables: {} }),
 }));
 vi.mock("../../features/settings/appearance/useScaledTextRole", () => ({
   useScaledTextRole: () => ({}),
@@ -155,6 +174,6 @@ it("ignores a late action from a dialog that a newer one replaced", () => {
 
   act(() => olderClick());
 
-  expect(olderAction).toHaveBeenCalledOnce();
+  expect(olderAction).not.toHaveBeenCalled();
   expect(container.textContent).toContain("Newer");
 });

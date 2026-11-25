@@ -1,20 +1,14 @@
-import { BlurTargetView } from "expo-blur";
 import {
   createContext,
   useContext,
   useLayoutEffect,
-  useRef,
   useState,
   useSyncExternalStore,
-  type ComponentRef,
   type ReactNode,
 } from "react";
 import { Platform, View } from "react-native";
 
-import {
-  AndroidBlurTargetContext,
-  AndroidOverlayHeaderContext,
-} from "../../components/ui/AndroidBlurTargetContext";
+import { AndroidOverlayHeaderContext } from "../../components/ui/AndroidBlurTargetContext";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { ThreadDetailScreen, type ThreadDetailScreenProps } from "./ThreadDetailScreen";
 
@@ -44,35 +38,34 @@ const ThreadScreenContext = createContext<ReturnType<typeof createThreadScreenSt
 function ThreadScreenOutlet() {
   const store = useContext(ThreadScreenContext)!;
   const content = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  const headerBlurTargetRef = useRef<ComponentRef<typeof View> | null>(null);
   if (content === null) return null;
-  const header = "props" in content ? content.props.header : content.header;
-  const body = "props" in content ? <ThreadDetailScreen {...content.props} /> : content.fallback;
-  if (Platform.OS === "android" && header) {
-    return (
-      <View className="flex-1 bg-thread-canvas">
-        <BlurTargetView ref={headerBlurTargetRef} style={{ flex: 1 }}>
+  if ("props" in content) {
+    // On Android, ThreadDetailScreen hosts a single non-nested BlurTargetView around the feed
+    // and floats both the header and composer over it to avoid double GPU blur passes at 120Hz/165Hz.
+    if (Platform.OS === "android" && content.props.header) {
+      return (
+        <View className="flex-1 bg-thread-canvas">
           <AndroidOverlayHeaderContext value={true}>
-            <ScreenContent surface="canvas">{body}</ScreenContent>
-          </AndroidOverlayHeaderContext>
-        </BlurTargetView>
-        <View
-          pointerEvents="box-none"
-          style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }}
-        >
-          <AndroidOverlayHeaderContext value={true}>
-            <AndroidBlurTargetContext value={headerBlurTargetRef}>
-              {header}
-            </AndroidBlurTargetContext>
+            <ScreenContent surface="canvas">
+              <ThreadDetailScreen {...content.props} />
+            </ScreenContent>
           </AndroidOverlayHeaderContext>
         </View>
-      </View>
+      );
+    }
+    return (
+      <>
+        {content.props.header}
+        <ScreenContent surface="canvas">
+          <ThreadDetailScreen {...content.props} />
+        </ScreenContent>
+      </>
     );
   }
   return (
     <>
-      {header}
-      <ScreenContent surface="canvas">{body}</ScreenContent>
+      {content.header}
+      <ScreenContent surface="canvas">{content.fallback}</ScreenContent>
     </>
   );
 }

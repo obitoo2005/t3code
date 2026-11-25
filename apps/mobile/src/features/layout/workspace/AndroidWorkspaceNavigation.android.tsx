@@ -2,7 +2,7 @@ import { CommonActions, useNavigation } from "@react-navigation/native";
 import { requireNativeView } from "expo";
 import * as Haptics from "expo-haptics";
 import { msg, useGT, useMessages } from "gt-react-native";
-import { useEffect, useState } from "react";
+import { memo, useEffect } from "react";
 import {
   Keyboard,
   processColor,
@@ -89,9 +89,9 @@ const TAB_TITLES = {
 const NativeNavigation = requireNativeView<NativeNavigationProps>("T3WorkspaceNavigation");
 
 const INDICATOR_SPRING = {
-  damping: 22,
-  stiffness: 300,
-  mass: 0.8,
+  damping: 24,
+  stiffness: 380,
+  mass: 0.72,
   reduceMotion: ReduceMotion.System,
 };
 
@@ -251,7 +251,7 @@ export function AndroidWorkspaceNavigation(props: {
   );
 }
 
-function FloatingGlassDock(props: {
+const FloatingGlassDock = memo(function FloatingGlassDock(props: {
   readonly tabs: readonly AndroidWorkspaceNavigationTab[];
   readonly selectedTab: AndroidWorkspaceNavigationTab;
   readonly tabTitles: Readonly<Record<string, string>>;
@@ -265,20 +265,20 @@ function FloatingGlassDock(props: {
   readonly onNewThread: () => void;
 }) {
   const innerPadding = 4;
-  const [measuredInnerWidth, setMeasuredInnerWidth] = useState(
-    Math.max(0, props.pillWidth - innerPadding * 2),
-  );
+  // Derive inner width synchronously from pillWidth and animate the tab *index* (not pixel offset),
+  // so resizing the pill between Chats and Settings/Usage never overshoots or shifts off-center.
+  const innerWidth = Math.max(0, props.pillWidth - innerPadding * 2);
   const activeIndex = Math.max(0, props.tabs.indexOf(props.selectedTab));
-  const slotWidth = props.tabs.length > 0 ? measuredInnerWidth / props.tabs.length : 0;
-  const indicatorX = useSharedValue(activeIndex * slotWidth);
+  const slotWidth = props.tabs.length > 0 ? innerWidth / props.tabs.length : 0;
+  const activeIndexProgress = useSharedValue(activeIndex);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated spring indicator position when active tab or bar width changes
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated spring indicator index when the active tab changes
   useEffect(() => {
-    indicatorX.set(withSpring(activeIndex * slotWidth, INDICATOR_SPRING));
-  }, [activeIndex, slotWidth, indicatorX]);
+    activeIndexProgress.set(withSpring(activeIndex, INDICATOR_SPRING));
+  }, [activeIndex, activeIndexProgress]);
 
   const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: indicatorX.value }],
+    transform: [{ translateX: activeIndexProgress.value * slotWidth }],
   }));
 
   const activeLensBg = props.isDark ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.08)";
@@ -307,10 +307,6 @@ function FloatingGlassDock(props: {
       >
         <View
           accessibilityRole="tablist"
-          onLayout={(event) => {
-            const inner = Math.max(0, event.nativeEvent.layout.width - innerPadding * 2);
-            if (Math.abs(inner - measuredInnerWidth) > 0.5) setMeasuredInnerWidth(inner);
-          }}
           style={{
             flex: 1,
             flexDirection: "row",
@@ -407,7 +403,7 @@ function FloatingGlassDock(props: {
       ) : null}
     </View>
   );
-}
+});
 
 export function FloatingWorkspaceTabs(props: {
   readonly fillWidth?: boolean;

@@ -2,7 +2,7 @@ import type { SubagentPillSegment } from "@t3tools/client-runtime/state/thread-s
 import { GlassContainer, GlassView } from "expo-glass-effect";
 import { useGT } from "gt-react-native";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
-import { type LayoutChangeEvent, Pressable, useWindowDimensions, View } from "react-native";
+import { type LayoutChangeEvent, Platform, Pressable, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -16,6 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { withUniwind } from "uniwind";
 
+import { AndroidGlassSurface } from "../../components/ui/AndroidGlassSurface";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
@@ -339,6 +340,36 @@ export function FloatingWorkingControl(props: {
             </Animated.View>
           </AnimatedGlassView>
         </UniwindGlassContainer>
+      ) : hasCapsule && Platform.OS === "android" ? (
+        <View pointerEvents="box-none" className="flex-row items-center gap-4">
+          <Animated.View
+            pointerEvents={capsuleInteractive ? "box-none" : "none"}
+            style={capsuleStyle}
+          >
+            <AndroidGlassSurface
+              radius={999}
+              tone="elevated"
+              style={{ height: 44, alignItems: "center", justifyContent: "center" }}
+            >
+              {capsuleContent}
+            </AndroidGlassSurface>
+          </Animated.View>
+
+          <Animated.View
+            pointerEvents={props.showScrollToEnd ? "auto" : "none"}
+            accessibilityElementsHidden={!props.showScrollToEnd}
+            importantForAccessibility={props.showScrollToEnd ? "auto" : "no-hide-descendants"}
+            style={[arrowTransformStyle, arrowContentStyle]}
+          >
+            <AndroidGlassSurface
+              radius={999}
+              tone="elevated"
+              style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+            >
+              <ScrollToEndButton disabled={!props.showScrollToEnd} onPress={props.onScrollToEnd} />
+            </AndroidGlassSurface>
+          </Animated.View>
+        </View>
       ) : hasCapsule ? (
         <View pointerEvents="box-none" className="flex-row items-center gap-4">
           <Animated.View
@@ -374,6 +405,14 @@ export function FloatingWorkingControl(props: {
         >
           <ScrollToEndButton onPress={props.onScrollToEnd} />
         </UniwindGlassView>
+      ) : Platform.OS === "android" ? (
+        <AndroidGlassSurface
+          radius={999}
+          tone="elevated"
+          style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+        >
+          <ScrollToEndButton onPress={props.onScrollToEnd} />
+        </AndroidGlassSurface>
       ) : (
         <ControlPill
           accessibilityLabel={gt("Scroll to end")}

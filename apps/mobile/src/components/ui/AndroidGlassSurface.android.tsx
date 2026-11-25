@@ -1,5 +1,5 @@
 import { BlurView } from "expo-blur";
-import { use, useId, type ComponentRef, type ReactNode, type RefObject } from "react";
+import { use, type ComponentRef, type ReactNode, type RefObject } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -15,9 +15,9 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import { useAppearancePreferences } from "../../features/settings/appearance/AppearancePreferencesProvider";
+import { themeColorWithAlpha } from "../../lib/mobileTheme";
 import { AndroidBlurTargetContext } from "./AndroidBlurTargetContext";
 
 export type AndroidGlassTone = "chrome" | "elevated" | "composer" | "menu";
@@ -32,9 +32,9 @@ export interface AndroidGlassSurfaceProps extends ViewProps {
 }
 
 const SPRING_CONFIG = {
-  damping: 18,
-  stiffness: 380,
-  mass: 0.7,
+  damping: 20,
+  stiffness: 420,
+  mass: 0.68,
   reduceMotion: ReduceMotion.System,
 };
 
@@ -64,7 +64,6 @@ function glassPalette(isDark: boolean, tone: AndroidGlassTone, hasLiveBlur: bool
       sheenTop: tone === "menu" ? 0.12 : 0.14,
       sheenMid: tone === "menu" ? 0.018 : 0.015,
       sheenBottom: 0.045,
-      sheenColor: "#ffffff",
     };
   }
   const tint =
@@ -87,14 +86,14 @@ function glassPalette(isDark: boolean, tone: AndroidGlassTone, hasLiveBlur: bool
     sheenTop: tone === "menu" ? 0.42 : 0.52,
     sheenMid: 0.08,
     sheenBottom: 0.2,
-    sheenColor: "#ffffff",
   };
 }
 
 /**
  * iOS-inspired frosted Liquid Glass surface for Android 12+ (API 31+).
  * Uses native RenderEffect live backdrop blur via `expo-blur` when a sibling `BlurTargetView`
- * is present, layered with directional specular rim highlights and a vertical glass sheen.
+ * is present, layered with directional specular rim highlights and a native RN linear-gradient sheen
+ * (zero SVG views for 120Hz/165Hz smoothness).
  */
 export function AndroidGlassSurface({
   children,
@@ -112,8 +111,20 @@ export function AndroidGlassSurface({
   const blurTarget = blurTargetProp === undefined ? contextTarget : blurTargetProp;
   const hasLiveBlur = blurTarget !== null;
   const palette = glassPalette(isDark, tone, hasLiveBlur);
-  const gradientId = useId();
   const blurIntensity = intensity ?? (isDark ? 48 : 58);
+
+  const sheenGradient: NonNullable<ViewStyle["backgroundImage"]> = [
+    {
+      type: "linear-gradient",
+      direction: "to bottom",
+      colorStops: [
+        { color: `rgba(255, 255, 255, ${palette.sheenTop})`, positions: ["0%"] },
+        { color: `rgba(255, 255, 255, ${palette.sheenMid})`, positions: ["38%"] },
+        { color: "rgba(255, 255, 255, 0)", positions: ["76%"] },
+        { color: `rgba(255, 255, 255, ${palette.sheenBottom})`, positions: ["100%"] },
+      ],
+    },
+  ];
 
   return (
     <View
@@ -143,37 +154,40 @@ export function AndroidGlassSurface({
           style={[StyleSheet.absoluteFill, { borderRadius: radius }]}
         />
       ) : null}
-      {hasLiveBlur ? (
-        <View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: palette.tint }]}
-        />
-      ) : null}
-      <Svg
+      <View
         pointerEvents="none"
-        width="100%"
-        height="100%"
-        preserveAspectRatio="none"
-        style={StyleSheet.absoluteFill}
-      >
-        <Defs>
-          <LinearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0%" stopColor={palette.sheenColor} stopOpacity={palette.sheenTop} />
-            <Stop offset="38%" stopColor={palette.sheenColor} stopOpacity={palette.sheenMid} />
-            <Stop offset="76%" stopColor={palette.sheenColor} stopOpacity={0} />
-            <Stop offset="100%" stopColor={palette.sheenColor} stopOpacity={palette.sheenBottom} />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
-      </Svg>
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: hasLiveBlur ? palette.tint : "transparent",
+            backgroundImage: sheenGradient,
+          },
+        ]}
+      />
       {children}
     </View>
   );
 }
 
-/** Soft top edge fade behind floating Android glass headers so scrolling messages melt under the bar. */
+/**
+ * Crisp top edge fade behind floating Android glass headers: keeps the status bar band 100% solid
+ * and title legible while letting scrolling messages melt softly under the floating glass pills.
+ */
 export function AndroidGlassHeaderScrim(props: { readonly color: string; readonly height: number }) {
-  const gradientId = useId();
+  const scrimGradient: NonNullable<ViewStyle["backgroundImage"]> = [
+    {
+      type: "linear-gradient",
+      direction: "to bottom",
+      colorStops: [
+        { color: themeColorWithAlpha(props.color, 1), positions: ["0%"] },
+        { color: themeColorWithAlpha(props.color, 1), positions: ["42%"] },
+        { color: themeColorWithAlpha(props.color, 0.88), positions: ["72%"] },
+        { color: themeColorWithAlpha(props.color, 0.36), positions: ["90%"] },
+        { color: themeColorWithAlpha(props.color, 0), positions: ["100%"] },
+      ],
+    },
+  ];
+
   return (
     <View
       pointerEvents="none"
@@ -182,21 +196,10 @@ export function AndroidGlassHeaderScrim(props: { readonly color: string; readonl
         top: 0,
         left: 0,
         right: 0,
-        height: props.height + 18,
+        height: props.height + 24,
+        backgroundImage: scrimGradient,
       }}
-    >
-      <Svg width="100%" height="100%" preserveAspectRatio="none">
-        <Defs>
-          <LinearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0%" stopColor={props.color} stopOpacity={0.94} />
-            <Stop offset="58%" stopColor={props.color} stopOpacity={0.72} />
-            <Stop offset="85%" stopColor={props.color} stopOpacity={0.28} />
-            <Stop offset="100%" stopColor={props.color} stopOpacity={0} />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
-      </Svg>
-    </View>
+    />
   );
 }
 
