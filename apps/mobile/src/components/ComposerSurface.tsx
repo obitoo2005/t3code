@@ -178,8 +178,9 @@ export function ComposerSurface(props: {
   readonly animateLayout?: boolean;
 }) {
   const colors = useUniwindTheme();
-  const { themeAppearance } = useAppearancePreferences();
+  const { themeAppearance, themeId } = useAppearancePreferences();
   const isDark = themeAppearance === "dark";
+  const isCrimson = themeId === "rias-crimson";
   const targetBorderRadius =
     typeof props.style.borderRadius === "number" ? props.style.borderRadius : 0;
   const shouldAnimate = props.animateLayout !== false && Platform.OS !== "android";
@@ -201,9 +202,27 @@ export function ComposerSurface(props: {
     Platform.OS === "android"
       ? {
           borderWidth: 1,
-          borderColor: isDark ? "rgba(255, 255, 255, 0.13)" : "rgba(0, 0, 0, 0.09)",
-          borderTopColor: isDark ? "rgba(255, 255, 255, 0.24)" : "rgba(255, 255, 255, 0.92)",
-          borderBottomColor: isDark ? "rgba(255, 255, 255, 0.07)" : "rgba(0, 0, 0, 0.11)",
+          borderColor: isCrimson
+            ? isDark
+              ? "rgba(244, 63, 94, 0.24)"
+              : "rgba(190, 18, 60, 0.16)"
+            : isDark
+              ? "rgba(255, 255, 255, 0.13)"
+              : "rgba(0, 0, 0, 0.09)",
+          borderTopColor: isCrimson
+            ? isDark
+              ? "rgba(255, 136, 162, 0.42)"
+              : "rgba(255, 255, 255, 0.92)"
+            : isDark
+              ? "rgba(255, 255, 255, 0.24)"
+              : "rgba(255, 255, 255, 0.92)",
+          borderBottomColor: isCrimson
+            ? isDark
+              ? "rgba(225, 29, 72, 0.14)"
+              : "rgba(190, 18, 60, 0.16)"
+            : isDark
+              ? "rgba(255, 255, 255, 0.07)"
+              : "rgba(0, 0, 0, 0.11)",
         }
       : undefined;
 

@@ -108,6 +108,7 @@ import {
 import { useSubmitAfterNativeImages } from "./useSubmitAfterNativeImages";
 import { ComposerCommandPopover } from "./ComposerCommandPopover";
 import { ComposerPopoverAnchor } from "./ComposerPopoverAnchor";
+import { ComposerQuotaMascot } from "./ComposerQuotaMascot";
 import { ComposerQueuedEditAttachments } from "./ComposerQueuedEdit";
 import { useComposerCommandMenu } from "./use-composer-command-menu";
 import type { ComposerEnvironmentCandidate } from "@t3tools/client-runtime/composerThreadItems";
@@ -730,15 +731,26 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       />
     ) : null;
 
+  const showQuotaMascot =
+    Platform.OS === "android" &&
+    !isVoiceInputPresented &&
+    !(
+      !isSubmissionLocked &&
+      composerMenu.trigger &&
+      (composerMenu.items.length > 0 || composerMenu.trigger.kind === "pull-request")
+    );
+
   return (
     <Animated.View
       onLayout={(event) => props.onHeightChange?.(event.nativeEvent.layout.height)}
       className="px-[12px]"
       style={{
-        paddingTop: 6,
+        paddingTop: showQuotaMascot ? 0 : 6,
         paddingBottom: (props.bottomInset ?? 0) + THREAD_COMPOSER_BOTTOM_GUTTER,
         backgroundColor:
-          Platform.OS === "android" ? themeColorWithAlpha(composerPanel, 1) : undefined,
+          Platform.OS === "android" && !showQuotaMascot
+            ? themeColorWithAlpha(composerPanel, 1)
+            : undefined,
       }}
     >
       {/* Use a plain View: Reanimated Animated.View drops experimental_backgroundImage on Android. */}
@@ -754,7 +766,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         className="relative w-full self-center"
         style={{ maxWidth: props.contentMaxWidth }}
       >
-        {props.draftControls}
         {!isSubmissionLocked &&
         composerMenu.trigger &&
         (composerMenu.items.length > 0 || composerMenu.trigger.kind === "pull-request") ? (
@@ -798,7 +809,49 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
           />
         ) : null}
 
-        <ComposerSurface
+        {showQuotaMascot || props.draftControls ? (
+          <View
+            pointerEvents="box-none"
+            className="flex-row items-end justify-between"
+            style={{ zIndex: 10 }}
+          >
+            <View pointerEvents="box-none" className="min-w-0 flex-1">
+              {props.draftControls}
+            </View>
+            {showQuotaMascot ? (
+              <View
+                pointerEvents="box-none"
+                style={{ marginRight: 16, marginBottom: -7, zIndex: 12 }}
+              >
+                <ComposerQuotaMascot
+                  environmentId={props.environmentId}
+                  connected={props.connectionState === "connected"}
+                  modelSelection={currentModelSelection}
+                  serverConfig={props.serverConfig}
+                  activeThreadBusy={props.activeThreadBusy}
+                  size={74}
+                  onPressOpenLimits={usageLimitsOffered ? openUsageLimits : undefined}
+                />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View className="relative">
+          {Platform.OS === "android" && showQuotaMascot ? (
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                left: -100,
+                right: -100,
+                top: 24,
+                bottom: -((props.bottomInset ?? 0) + THREAD_COMPOSER_BOTTOM_GUTTER),
+                backgroundColor: themeColorWithAlpha(composerPanel, 1),
+              }}
+            />
+          ) : null}
+          <ComposerSurface
           animateLayout={false}
           style={{
             borderRadius: usesLargeControls ? 31 : 27,
@@ -1151,6 +1204,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
             </ComposerDictationToolbar>
           </Animated.View>
         </ComposerSurface>
+        </View>
 
         {props.connectionState === "connected" && operateDenied ? (
           <Text className="pt-2 text-xs text-foreground-muted">
