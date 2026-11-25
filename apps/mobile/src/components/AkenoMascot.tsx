@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { Image, type ImageSource } from "expo-image";
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Pressable, View } from "react-native";
 import Animated, {
   Easing,
@@ -12,11 +12,14 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
 
 export type AkenoMood = "cute" | "happy" | "surprised" | "sad" | "sleepy";
+export type CompanionMood = AkenoMood;
+export type CompanionCharacter = "rias" | "akeno";
 
-export const AKENO_MOOD_SOURCES: Readonly<Record<AkenoMood, ImageSource>> = {
+export const AKENO_MOOD_SOURCES: Readonly<Record<CompanionMood, ImageSource>> = {
   cute: require("../../assets/akeno-cute.webp"),
   happy: require("../../assets/akeno-happy.webp"),
   surprised: require("../../assets/akeno-surprised.webp"),
@@ -24,12 +27,38 @@ export const AKENO_MOOD_SOURCES: Readonly<Record<AkenoMood, ImageSource>> = {
   sleepy: require("../../assets/akeno-sleepy.webp"),
 };
 
-const MOOD_GLOWS: Readonly<Record<AkenoMood, { readonly bg: string; readonly shadow: string }>> = {
-  cute: { bg: "rgba(168, 85, 247, 0.14)", shadow: "rgba(168, 85, 247, 0.28)" },
-  happy: { bg: "rgba(244, 114, 182, 0.15)", shadow: "rgba(244, 114, 182, 0.28)" },
-  surprised: { bg: "rgba(245, 158, 11, 0.14)", shadow: "rgba(239, 68, 68, 0.24)" },
-  sad: { bg: "rgba(96, 165, 250, 0.14)", shadow: "rgba(96, 165, 250, 0.24)" },
-  sleepy: { bg: "rgba(139, 92, 246, 0.14)", shadow: "rgba(139, 92, 246, 0.24)" },
+export const RIAS_MOOD_SOURCES: Readonly<Record<CompanionMood, ImageSource>> = {
+  cute: require("../../assets/rias-idle.webp"),
+  happy: require("../../assets/rias-happy.webp"),
+  surprised: require("../../assets/rias-surprised.webp"),
+  sad: require("../../assets/rias-sad.webp"),
+  sleepy: require("../../assets/rias-sleepy.webp"),
+};
+
+export const COMPANION_MOOD_SOURCES: Readonly<
+  Record<CompanionCharacter, Readonly<Record<CompanionMood, ImageSource>>>
+> = {
+  rias: RIAS_MOOD_SOURCES,
+  akeno: AKENO_MOOD_SOURCES,
+};
+
+const MOOD_GLOWS: Readonly<
+  Record<CompanionCharacter, Readonly<Record<CompanionMood, { readonly bg: string; readonly shadow: string }>>>
+> = {
+  akeno: {
+    cute: { bg: "rgba(168, 85, 247, 0.14)", shadow: "rgba(168, 85, 247, 0.28)" },
+    happy: { bg: "rgba(244, 114, 182, 0.15)", shadow: "rgba(244, 114, 182, 0.28)" },
+    surprised: { bg: "rgba(245, 158, 11, 0.14)", shadow: "rgba(239, 68, 68, 0.24)" },
+    sad: { bg: "rgba(96, 165, 250, 0.14)", shadow: "rgba(96, 165, 250, 0.24)" },
+    sleepy: { bg: "rgba(139, 92, 246, 0.14)", shadow: "rgba(139, 92, 246, 0.24)" },
+  },
+  rias: {
+    cute: { bg: "rgba(225, 29, 72, 0.14)", shadow: "rgba(225, 29, 72, 0.26)" },
+    happy: { bg: "rgba(244, 63, 94, 0.16)", shadow: "rgba(251, 191, 36, 0.26)" },
+    surprised: { bg: "rgba(239, 68, 68, 0.14)", shadow: "rgba(245, 158, 11, 0.24)" },
+    sad: { bg: "rgba(96, 165, 250, 0.14)", shadow: "rgba(96, 165, 250, 0.24)" },
+    sleepy: { bg: "rgba(244, 114, 182, 0.14)", shadow: "rgba(225, 29, 72, 0.22)" },
+  },
 };
 
 const BOUNCE_SPRING = {
@@ -39,17 +68,34 @@ const BOUNCE_SPRING = {
   reduceMotion: ReduceMotion.System,
 };
 
+let nextCompanionToggle = 0;
+
+export function pickAlternatingCompanion(seed?: string): CompanionCharacter {
+  if (seed) {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i += 1) {
+      hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash) % 2 === 0 ? "rias" : "akeno";
+  }
+  nextCompanionToggle += 1;
+  return nextCompanionToggle % 2 === 0 ? "rias" : "akeno";
+}
+
 export function isLateNightHour(date: Date = new Date()): boolean {
   const hour = date.getHours();
   return hour >= 23 || hour < 6;
 }
 
 /**
- * Animated transparent Akeno pixel-art sprite supporting all 5 expressive moods:
+ * Unified animated transparent Rias / Akeno companion sprite supporting all 5 expressive moods:
  * `cute`, `happy`, `surprised`, `sad`, and `sleepy`.
+ * Follows Settings → Appearance → Companion mascot (`rias` / `akeno` / `random`) when `character` is omitted.
  */
-export const AkenoMascotSprite = memo(function AkenoMascotSprite(props: {
-  readonly mood: AkenoMood;
+export const CompanionMascotSprite = memo(function CompanionMascotSprite(props: {
+  readonly mood: CompanionMood;
+  readonly character?: CompanionCharacter;
+  readonly seed?: string;
   readonly size?: number;
   readonly glow?: boolean;
   readonly onPress?: () => void;
@@ -58,6 +104,13 @@ export const AkenoMascotSprite = memo(function AkenoMascotSprite(props: {
   const size = props.size ?? 116;
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
+  const { mascotPreference } = useAppearancePreferences();
+  const [fallbackCharacter] = useState<CompanionCharacter>(() =>
+    pickAlternatingCompanion(props.seed),
+  );
+  const character: CompanionCharacter =
+    props.character ?? (mascotPreference === "random" ? fallbackCharacter : mascotPreference);
+
   const scale = useSharedValue(1);
   const tilt = useSharedValue(0);
 
@@ -85,7 +138,7 @@ export const AkenoMascotSprite = memo(function AkenoMascotSprite(props: {
     props.onPress?.();
   };
 
-  const glowColors = MOOD_GLOWS[props.mood];
+  const glowColors = MOOD_GLOWS[character][props.mood];
   const body = (
     <Animated.View
       style={[
@@ -120,7 +173,7 @@ export const AkenoMascotSprite = memo(function AkenoMascotSprite(props: {
         />
       ) : null}
       <Image
-        source={AKENO_MOOD_SOURCES[props.mood]}
+        source={COMPANION_MOOD_SOURCES[character][props.mood]}
         autoplay={appActive && !reducedMotion}
         accessibilityIgnoresInvertColors
         contentFit="contain"
@@ -134,7 +187,9 @@ export const AkenoMascotSprite = memo(function AkenoMascotSprite(props: {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={props.accessibilityLabel ?? "Akeno mascot"}
+      accessibilityLabel={
+        props.accessibilityLabel ?? (character === "rias" ? "Rias mascot" : "Akeno mascot")
+      }
       hitSlop={8}
       onPress={handlePress}
       className="items-center justify-center"
@@ -142,4 +197,14 @@ export const AkenoMascotSprite = memo(function AkenoMascotSprite(props: {
       {body}
     </Pressable>
   );
+});
+
+export const AkenoMascotSprite = memo(function AkenoMascotSprite(props: {
+  readonly mood: AkenoMood;
+  readonly size?: number;
+  readonly glow?: boolean;
+  readonly onPress?: () => void;
+  readonly accessibilityLabel?: string;
+}) {
+  return <CompanionMascotSprite {...props} character="akeno" />;
 });

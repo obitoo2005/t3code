@@ -15,8 +15,7 @@ import { usePaneRole } from "../../components/ui/Pane";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { RefreshControl } from "../../components/ui/RefreshControl";
 import { AppText as Text } from "../../components/ui/AppText";
-import { AKENO_MOOD_SOURCES, isLateNightHour } from "../../components/AkenoMascot";
-import { RIAS_IDLE_MASCOT_SOURCE } from "../../components/RiasMascot";
+import { COMPANION_MOOD_SOURCES, isLateNightHour } from "../../components/AkenoMascot";
 import { useAppActive, useReduceMotionEnabled } from "../../lib/appState";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useActiveNewTask } from "../../state/active-new-task";
@@ -200,15 +199,13 @@ function HomePeekingRiasRefreshHeader(props: {
   const visible = props.phase !== "idle";
   const reveal = useSharedValue(0);
 
-  const useAkeno =
-    mascotPreference === "akeno" || (mascotPreference === "random" && props.pullCount % 2 === 1);
-  const mascotSource = useAkeno
-    ? props.phase === "done"
-      ? AKENO_MOOD_SOURCES.happy
-      : isLateNightHour()
-        ? AKENO_MOOD_SOURCES.sleepy
-        : AKENO_MOOD_SOURCES.cute
-    : RIAS_IDLE_MASCOT_SOURCE;
+  const character =
+    mascotPreference === "akeno" || (mascotPreference === "random" && props.pullCount % 2 === 1)
+      ? "akeno"
+      : "rias";
+  const mascotMood =
+    props.phase === "done" ? "happy" : isLateNightHour() ? "sleepy" : "cute";
+  const mascotSource = COMPANION_MOOD_SOURCES[character][mascotMood];
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated reveal of peeking companion mascot during pull-to-refresh
   useEffect(() => {

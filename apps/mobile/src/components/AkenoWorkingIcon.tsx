@@ -1,5 +1,5 @@
-import { Image, type ImageSource } from "expo-image";
-import { memo, useEffect, useRef } from "react";
+import { Image } from "expo-image";
+import { memo, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -13,16 +13,22 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
-import { AKENO_MOOD_SOURCES } from "./AkenoMascot";
+import {
+  COMPANION_MOOD_SOURCES,
+  pickAlternatingCompanion,
+  type CompanionCharacter,
+  type CompanionMood,
+} from "./AkenoMascot";
 
 export type AkenoIconState = "working" | "done" | "stopped" | "failed";
 
-const AKENO_SOURCES: Readonly<Record<AkenoIconState, ImageSource>> = {
-  working: AKENO_MOOD_SOURCES.cute,
-  done: AKENO_MOOD_SOURCES.happy,
-  stopped: AKENO_MOOD_SOURCES.surprised,
-  failed: AKENO_MOOD_SOURCES.sad,
+const STATE_TO_MOOD: Readonly<Record<AkenoIconState, CompanionMood>> = {
+  working: "cute",
+  done: "happy",
+  stopped: "surprised",
+  failed: "sad",
 };
 
 const TAP_SPRING = {
@@ -33,16 +39,17 @@ const TAP_SPRING = {
 };
 
 /**
- * 4-state animated expressive Akeno mascot for chat turn timing rows:
- * - `working`: cute sparkling winking Akeno + gentle float
- * - `done`: happy cheering Akeno with floating hearts & stars
- * - `stopped`: surprised flustered Akeno with bobbing sweat drop & `!`
- * - `failed`: sad teary-eyed pouting Akeno
- * Plays a playful spring bounce & wiggle whenever tapped.
+ * 4-state animated expressive companion mascot (Rias / Akeno) for chat turn timing rows:
+ * - `working`: cute sparkling winking sprite + gentle float
+ * - `done`: happy cheering sprite with floating hearts & stars
+ * - `stopped`: surprised flustered sprite with bobbing sweat drop & `!`
+ * - `failed`: sad teary-eyed pouting sprite
+ * Follows Settings → Appearance → Companion mascot (`rias` / `akeno` / `random`).
  */
 export const AkenoWorkingIcon = memo(function AkenoWorkingIcon(props: {
   readonly state?: AkenoIconState;
   readonly active?: boolean;
+  readonly seed?: string;
   readonly tapCount?: number;
   readonly size?: number;
 }) {
@@ -50,6 +57,14 @@ export const AkenoWorkingIcon = memo(function AkenoWorkingIcon(props: {
   const size = props.size ?? 38;
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
+  const { mascotPreference } = useAppearancePreferences();
+  const [fallbackCharacter] = useState<CompanionCharacter>(() =>
+    pickAlternatingCompanion(props.seed),
+  );
+  const character: CompanionCharacter =
+    mascotPreference === "random" ? fallbackCharacter : mascotPreference;
+  const source = COMPANION_MOOD_SOURCES[character][STATE_TO_MOOD[state]];
+
   const shouldFloat = state === "working" && appActive && !reducedMotion;
   const shouldPlayWebp = appActive && !reducedMotion;
 
@@ -203,7 +218,7 @@ export const AkenoWorkingIcon = memo(function AkenoWorkingIcon(props: {
     >
       <View style={{ width: size, height: size }}>
         <Image
-          source={AKENO_SOURCES[state]}
+          source={source}
           autoplay={shouldPlayWebp}
           accessibilityIgnoresInvertColors
           contentFit="contain"

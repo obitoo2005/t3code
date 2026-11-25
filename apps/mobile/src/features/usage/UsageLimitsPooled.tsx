@@ -27,8 +27,14 @@ import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScroll
 import { Defs, Path, Pattern, Rect, Svg } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AkenoMascotSprite, isLateNightHour, type AkenoMood } from "../../components/AkenoMascot";
+import {
+  CompanionMascotSprite,
+  isLateNightHour,
+  type CompanionCharacter,
+  type CompanionMood,
+} from "../../components/AkenoMascot";
 import { AndroidGlassSurface } from "../../components/ui/AndroidGlassSurface";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
@@ -493,7 +499,16 @@ export function UsageLimitsSection({
   const externalLinks = collectExternalUsageLinks(selected, m);
   const colors = useProviderColors();
   const gt = useGT();
-  const [heroAwake, setHeroAwake] = useState(false);
+  const { mascotPreference } = useAppearancePreferences();
+  const [heroTapCount, setHeroTapCount] = useState(0);
+  const heroAwake = heroTapCount > 0;
+  const heroCharacter: CompanionCharacter =
+    mascotPreference === "random"
+      ? heroTapCount % 2 === 0
+        ? "akeno"
+        : "rias"
+      : mascotPreference;
+  const heroName = heroCharacter === "rias" ? "Rias" : "Akeno";
 
   const allRemaining = pools.flatMap((pool) => pool.windows.map((window) => window.remainingPercent));
   const lowestRemaining = allRemaining.length > 0 ? Math.min(...allRemaining) : null;
@@ -502,7 +517,7 @@ export function UsageLimitsSection({
       ? Math.round(allRemaining.reduce((sum, value) => sum + value, 0) / allRemaining.length)
       : null;
 
-  const heroMood: AkenoMood =
+  const heroMood: CompanionMood =
     failedLabels.length > 0 || (lowestRemaining !== null && lowestRemaining <= 25)
       ? "sad"
       : isLateNightHour() && !heroAwake
@@ -522,12 +537,15 @@ export function UsageLimitsSection({
           : gt("Steady pace today ✦");
   const heroSubtitle =
     heroMood === "sad" && lowestRemaining !== null
-      ? gt("Lowest window is at {percent}% — tap Akeno to refresh", { percent: lowestRemaining })
+      ? gt("Lowest window is at {percent}% — tap {name} to refresh", {
+          percent: lowestRemaining,
+          name: heroName,
+        })
       : heroMood === "sleepy"
-        ? gt("Tap Akeno to wake her up & refresh limits")
+        ? gt("Tap {name} to wake her up & refresh limits", { name: heroName })
         : averageRemaining !== null
           ? gt("Average {percent}% remaining · tap to refresh", { percent: averageRemaining })
-          : gt("Tap Akeno anytime to refresh your limits");
+          : gt("Tap {name} anytime to refresh your limits", { name: heroName });
 
   return (
     <View className="gap-6">
@@ -537,12 +555,12 @@ export function UsageLimitsSection({
             accessibilityRole="button"
             accessibilityLabel={gt("Refresh usage limits")}
             onPress={() => {
-              setHeroAwake(true);
+              setHeroTapCount((count) => count + 1);
               onRefresh?.();
             }}
             className="flex-row items-center gap-3.5 px-4 py-3 active:opacity-80"
           >
-            <AkenoMascotSprite mood={heroMood} size={86} glow />
+            <CompanionMascotSprite character={heroCharacter} mood={heroMood} size={86} glow />
             <View className="min-w-0 flex-1 gap-1">
               <Text className="text-base font-t3-bold text-foreground">{heroTitle}</Text>
               <Text className="text-xs leading-relaxed text-foreground-muted">{heroSubtitle}</Text>

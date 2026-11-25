@@ -14,27 +14,40 @@ import Animated, {
 
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
-import { AKENO_MOOD_SOURCES, isLateNightHour, type AkenoMood } from "./AkenoMascot";
+import {
+  COMPANION_MOOD_SOURCES,
+  isLateNightHour,
+  pickAlternatingCompanion,
+  RIAS_MOOD_SOURCES,
+  type CompanionCharacter,
+  type CompanionMood,
+} from "./AkenoMascot";
 import { AppText as Text } from "./ui/AppText";
 
-export const RIAS_IDLE_MASCOT_SOURCE = require("../../assets/rias-idle.webp");
+export const RIAS_IDLE_MASCOT_SOURCE = RIAS_MOOD_SOURCES.cute;
 
-const RIAS_CAPTIONS: readonly string[] = [
-  "Ready to ship something wild?",
-  "Tap me for extra luck ✦",
-  "Zero bugs... probably ✨",
-  "What are we cooking today?",
-  "Crimson power, pure OLED ♥",
+const RIAS_DAY_MOODS: readonly { readonly mood: CompanionMood; readonly caption: string }[] = [
+  { mood: "cute", caption: "Ready to ship something wild? ✦" },
+  { mood: "happy", caption: "Crimson power, pure OLED ♥" },
+  { mood: "surprised", caption: "Whoa—tap me for extra luck! ✨" },
+  { mood: "cute", caption: "Zero bugs... probably ✨" },
 ];
 
-const AKENO_DAY_MOODS: readonly { readonly mood: AkenoMood; readonly caption: string }[] = [
+const RIAS_NIGHT_MOODS: readonly { readonly mood: CompanionMood; readonly caption: string }[] = [
+  { mood: "sleepy", caption: "Late-night grind… don't forget to rest 😴" },
+  { mood: "surprised", caption: "H-hey, I'm awake! Let's build! ✨" },
+  { mood: "happy", caption: "Midnight shipping queen ♥" },
+  { mood: "cute", caption: "Tap me whenever you need a spark ✦" },
+];
+
+const AKENO_DAY_MOODS: readonly { readonly mood: CompanionMood; readonly caption: string }[] = [
   { mood: "cute", caption: "Ara ara~ what are we building? ✦" },
   { mood: "happy", caption: "Yay! Let's ship something awesome ♥" },
   { mood: "surprised", caption: "Oh! You tapped me! ✨" },
   { mood: "cute", caption: "I'll cheer you on the whole way 💜" },
 ];
 
-const AKENO_NIGHT_MOODS: readonly { readonly mood: AkenoMood; readonly caption: string }[] = [
+const AKENO_NIGHT_MOODS: readonly { readonly mood: CompanionMood; readonly caption: string }[] = [
   { mood: "sleepy", caption: "Late-night coding… don't forget to rest 😴" },
   { mood: "surprised", caption: "Ah—I'm awake! Let's code! ✨" },
   { mood: "happy", caption: "Midnight shipping squad ♥" },
@@ -48,12 +61,9 @@ const BOUNCE_SPRING = {
   reduceMotion: ReduceMotion.System,
 };
 
-let randomMascotToggle = 0;
-
 /**
  * Animated transparent Rias / Akeno companion mascot for New Thread & empty screens.
- * Respects Settings → Appearance → Companion mascot (`Rias` / `Akeno` / `Both`),
- * automatically shows sleepy Akeno late at night (11 PM–6 AM) until tapped awake!
+ * Both Rias and Akeno support full daytime & late-night sleepy→awake emotion cycles!
  */
 export const RiasMascot = memo(function RiasMascot(props: {
   readonly size?: number;
@@ -63,25 +73,24 @@ export const RiasMascot = memo(function RiasMascot(props: {
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
   const { mascotPreference } = useAppearancePreferences();
-  const [randomPick] = useState<"rias" | "akeno">(() => {
-    randomMascotToggle += 1;
-    return randomMascotToggle % 2 === 1 ? "akeno" : "rias";
-  });
+  const [randomPick] = useState<CompanionCharacter>(() => pickAlternatingCompanion());
   const [lateNight] = useState(() => isLateNightHour());
   const [tapStep, setTapStep] = useState(0);
   const scale = useSharedValue(1);
   const tilt = useSharedValue(0);
 
-  const activeCharacter: "rias" | "akeno" =
+  const activeCharacter: CompanionCharacter =
     mascotPreference === "random" ? randomPick : mascotPreference;
-  const akenoSequence = lateNight ? AKENO_NIGHT_MOODS : AKENO_DAY_MOODS;
-  const akenoEntry = akenoSequence[tapStep % akenoSequence.length]!;
-  const source =
-    activeCharacter === "akeno" ? AKENO_MOOD_SOURCES[akenoEntry.mood] : RIAS_IDLE_MASCOT_SOURCE;
-  const caption =
-    activeCharacter === "akeno"
-      ? akenoEntry.caption
-      : RIAS_CAPTIONS[tapStep % RIAS_CAPTIONS.length]!;
+  const sequence =
+    activeCharacter === "rias"
+      ? lateNight
+        ? RIAS_NIGHT_MOODS
+        : RIAS_DAY_MOODS
+      : lateNight
+        ? AKENO_NIGHT_MOODS
+        : AKENO_DAY_MOODS;
+  const entry = sequence[tapStep % sequence.length]!;
+  const source = COMPANION_MOOD_SOURCES[activeCharacter][entry.mood];
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }, { rotate: `${tilt.value}deg` }],
@@ -165,7 +174,7 @@ export const RiasMascot = memo(function RiasMascot(props: {
           textRole="footnote"
           className="mt-1.5 text-center font-t3-medium text-foreground-muted"
         >
-          {caption}
+          {entry.caption}
         </Text>
       ) : null}
     </View>

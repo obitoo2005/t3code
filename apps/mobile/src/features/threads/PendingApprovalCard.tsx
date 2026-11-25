@@ -12,7 +12,7 @@ import { T, useGT, useMessages } from "gt-react-native";
 import { useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 
-import { AkenoMascotSprite } from "../../components/AkenoMascot";
+import { CompanionMascotSprite } from "../../components/AkenoMascot";
 import { AppText as Text } from "../../components/ui/AppText";
 import type { PendingApproval } from "../../lib/threadActivity";
 
@@ -52,7 +52,9 @@ export function PendingApprovalCard(props: PendingApprovalCardProps) {
             {props.approval.appName ?? props.approval.requestKind}
           </Text>
         </View>
-        {Platform.OS === "android" ? <AkenoMascotSprite mood="cute" size={56} /> : null}
+        {Platform.OS === "android" ? (
+          <CompanionMascotSprite mood="cute" seed={props.approval.requestId} size={56} />
+        ) : null}
       </View>
       {props.approval.detail ? (
         <Text className="font-sans text-sm leading-normal text-foreground-secondary">

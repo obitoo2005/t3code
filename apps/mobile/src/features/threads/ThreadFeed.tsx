@@ -1891,7 +1891,7 @@ function RunFoldWorking(props: {
       className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2"
       style={{ minHeight: Math.max(TURN_FOLD_HEIGHT - 3.5, props.rowSizing.estimatedRowHeight) }}
     >
-      <AkenoWorkingIcon state="working" tapCount={tapCount} size={38} />
+      <AkenoWorkingIcon state="working" seed={props.startedAt} tapCount={tapCount} size={38} />
       <Text
         key={props.rowSizing.textSizeKey}
         numberOfLines={1}
@@ -1969,7 +1969,7 @@ function RunFoldButton({
         className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2"
         style={{ minHeight: Math.max(TURN_FOLD_HEIGHT - 3.5, rowSizing.estimatedRowHeight) }}
       >
-        <AkenoWorkingIcon state={akenoState} tapCount={tapCount} size={38} />
+        <AkenoWorkingIcon state={akenoState} seed={entry.runId} tapCount={tapCount} size={38} />
         {displayLabel || error ? (
           <Text
             key={rowSizing.textSizeKey}
