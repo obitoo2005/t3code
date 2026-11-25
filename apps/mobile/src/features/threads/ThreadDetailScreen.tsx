@@ -80,6 +80,7 @@ import { AuthOrchestrationOperateScope, isProviderNativeSubagentThread } from "@
 import type { QueuedRunEdit } from "../../state/queued-run-edit";
 import type { FollowUpBehavior } from "../../lib/followUpBehavior";
 import type { ActiveTurnComposerAction } from "@t3tools/client-runtime/state/composer-dispatch";
+import { BlurTargetView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import {
   useCallback,
@@ -88,6 +89,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ComponentRef,
 } from "react";
 import { useGT, useMessages } from "gt-react-native";
 import { m } from "../../i18n/messages";
@@ -118,6 +120,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { AndroidBlurTargetContext } from "../../components/ui/AndroidBlurTargetContext";
 import { useBarOverlap } from "../../components/ui/useBarInset";
 import {
   useWorkspaceContentWidth,
@@ -1504,105 +1507,112 @@ function ThreadDetailBody(
     feedTouchStartRef.current = null;
   };
 
+  const composerBlurTargetRef = useRef<ComponentRef<typeof View> | null>(null);
+  const feedBody = props.draftMode ? (
+    props.draftMode.content(
+      navigationHeaderHeight,
+      liveKeyboardHeight + estimatedOverlayHeight + 24,
+      draftViewportHeight,
+    )
+  ) : showContent ? (
+    <View
+      style={{ flex: 1 }}
+      onTouchStart={handleFeedTouchStart}
+      onTouchMove={handleFeedTouchMove}
+      onTouchEnd={handleFeedTouchEnd}
+      onTouchCancel={handleFeedTouchCancel}
+    >
+      <View
+        pointerEvents="none"
+        className={
+          Platform.OS === "android"
+            ? "absolute inset-0 bg-thread-canvas"
+            : "absolute inset-0 bg-screen"
+        }
+      />
+      <RenderErrorBoundary
+        key={selectedThreadKey}
+        resetKeys={[props.threadCwd]}
+        renderFallback={(fallback) => (
+          <RenderFailureView
+            {...fallback}
+            title={gt("The conversation couldn't be displayed")}
+            bottomInset={estimatedOverlayHeight}
+          />
+        )}
+      >
+        <WorkspaceMutationIdProvider threadRef={props.selectedThreadDetailRef}>
+          <ColumnWidth width={columnWidth}>
+            <ThreadFeed
+              toolCallVisibility={toolCallVisibility}
+              environmentId={props.environmentId}
+              threadId={props.selectedThread.id}
+              detailRef={props.selectedThreadDetailRef}
+              workspaceRoot={props.threadCwd}
+              feed={props.selectedThreadFeed}
+              pendingHandoff={props.pendingHandoff}
+              statusLines={statusLines}
+              worktreeSetup={props.worktreeSetup}
+              preparingWorktree={
+                props.creationState?.kind === "preparing" &&
+                props.creationState.preparingWorktree &&
+                !props.worktreeSetup
+              }
+              queuedMessages={props.queuedMessages}
+              dispatchingMessageId={props.dispatchingMessageId}
+              // A native subagent has no composer to edit a pending message in;
+              // Cancel on the edit banner would discard it.
+              onEditPendingMessage={
+                isProviderSubagent || pendingMessageEditBlocked ? null : handleEditPendingMessage
+              }
+              contentPresentation={props.contentPresentation}
+              threadTitle={props.selectedThread.title}
+              latestRun={props.activityRun}
+              activeWorkStartedAt={props.activeWorkStartedAt}
+              runlessWorkActive={props.runlessWorkActive ?? false}
+              listRef={listRef}
+              freeze={freeze}
+              anchorMessageId={anchorMessageId}
+              jumpToMessageId={jumpMessageLoaded ? jumpMessageId : null}
+              onJumpedToMessage={() => finishThreadMessageJump(selectedThreadKey)}
+              contentInsetEndAdjustment={combinedContentInsetEndAdjustment}
+              keyboardOffset={composerKeyboardOffset}
+              sendingWithKeyboard={sendingWithKeyboard}
+              fitShortFeedToViewport={questionInFlow && !isKeyboardVisible}
+              contentBottomInset={
+                questionInFlow
+                  ? 0
+                  : estimatedOverlayHeight +
+                    (showFloatingStatus ? FLOATING_WORKING_CONTROL_COVERAGE : FEED_END_GAP)
+              }
+              contentMaxWidth={contentMaxWidth}
+              historyControls={props.historyControls}
+              contentSideInsets={deriveContentSideInsets(nativeMetrics)}
+              layoutVariant={layoutVariant}
+              usesAutomaticContentInsets={props.usesAutomaticContentInsets}
+              onHeaderMaterialVisibilityChange={props.onHeaderMaterialVisibilityChange}
+              onIsAtEndChange={setIsAtEnd}
+              skills={selectedProviderSkills}
+              onCiteAssistantText={canCiteAssistantText ? handleCiteAssistantText : undefined}
+              onUseArtifactTemplate={handleUseArtifactTemplate}
+            />
+          </ColumnWidth>
+        </WorkspaceMutationIdProvider>
+      </RenderErrorBoundary>
+    </View>
+  ) : (
+    <View className="flex-1" />
+  );
+
   return (
     <View className="flex-1" onLayout={handleScreenLayout}>
       {!usesNativeWorkspaceColumns ? <NativeLayoutObserver onChange={setScreenMetrics} /> : null}
-      {props.draftMode ? (
-        props.draftMode.content(
-          navigationHeaderHeight,
-          liveKeyboardHeight + estimatedOverlayHeight + 24,
-          draftViewportHeight,
-        )
-      ) : showContent ? (
-        <View
-          style={{ flex: 1 }}
-          onTouchStart={handleFeedTouchStart}
-          onTouchMove={handleFeedTouchMove}
-          onTouchEnd={handleFeedTouchEnd}
-          onTouchCancel={handleFeedTouchCancel}
-        >
-          <View
-            pointerEvents="none"
-            className={
-              Platform.OS === "android"
-                ? "absolute inset-0 bg-thread-canvas"
-                : "absolute inset-0 bg-screen"
-            }
-          />
-          <RenderErrorBoundary
-            key={selectedThreadKey}
-            resetKeys={[props.threadCwd]}
-            renderFallback={(fallback) => (
-              <RenderFailureView
-                {...fallback}
-                title={gt("The conversation couldn't be displayed")}
-                bottomInset={estimatedOverlayHeight}
-              />
-            )}
-          >
-            <WorkspaceMutationIdProvider threadRef={props.selectedThreadDetailRef}>
-              <ColumnWidth width={columnWidth}>
-                <ThreadFeed
-                  toolCallVisibility={toolCallVisibility}
-                  environmentId={props.environmentId}
-                  threadId={props.selectedThread.id}
-                  detailRef={props.selectedThreadDetailRef}
-                  workspaceRoot={props.threadCwd}
-                  feed={props.selectedThreadFeed}
-                  pendingHandoff={props.pendingHandoff}
-                  statusLines={statusLines}
-                  worktreeSetup={props.worktreeSetup}
-                  preparingWorktree={
-                    props.creationState?.kind === "preparing" &&
-                    props.creationState.preparingWorktree &&
-                    !props.worktreeSetup
-                  }
-                  queuedMessages={props.queuedMessages}
-                  dispatchingMessageId={props.dispatchingMessageId}
-                  // A native subagent has no composer to edit a pending message in;
-                  // Cancel on the edit banner would discard it.
-                  onEditPendingMessage={
-                    isProviderSubagent || pendingMessageEditBlocked
-                      ? null
-                      : handleEditPendingMessage
-                  }
-                  contentPresentation={props.contentPresentation}
-                  threadTitle={props.selectedThread.title}
-                  latestRun={props.activityRun}
-                  activeWorkStartedAt={props.activeWorkStartedAt}
-                  runlessWorkActive={props.runlessWorkActive ?? false}
-                  listRef={listRef}
-                  freeze={freeze}
-                  anchorMessageId={anchorMessageId}
-                  jumpToMessageId={jumpMessageLoaded ? jumpMessageId : null}
-                  onJumpedToMessage={() => finishThreadMessageJump(selectedThreadKey)}
-                  contentInsetEndAdjustment={combinedContentInsetEndAdjustment}
-                  keyboardOffset={composerKeyboardOffset}
-                  sendingWithKeyboard={sendingWithKeyboard}
-                  fitShortFeedToViewport={questionInFlow && !isKeyboardVisible}
-                  contentBottomInset={
-                    questionInFlow
-                      ? 0
-                      : estimatedOverlayHeight +
-                        (showFloatingStatus ? FLOATING_WORKING_CONTROL_COVERAGE : FEED_END_GAP)
-                  }
-                  contentMaxWidth={contentMaxWidth}
-                  historyControls={props.historyControls}
-                  contentSideInsets={deriveContentSideInsets(nativeMetrics)}
-                  layoutVariant={layoutVariant}
-                  usesAutomaticContentInsets={props.usesAutomaticContentInsets}
-                  onHeaderMaterialVisibilityChange={props.onHeaderMaterialVisibilityChange}
-                  onIsAtEndChange={setIsAtEnd}
-                  skills={selectedProviderSkills}
-                  onCiteAssistantText={canCiteAssistantText ? handleCiteAssistantText : undefined}
-                  onUseArtifactTemplate={handleUseArtifactTemplate}
-                />
-              </ColumnWidth>
-            </WorkspaceMutationIdProvider>
-          </RenderErrorBoundary>
-        </View>
+      {Platform.OS === "android" ? (
+        <BlurTargetView ref={composerBlurTargetRef} style={{ flex: 1 }}>
+          {feedBody}
+        </BlurTargetView>
       ) : (
-        <View className="flex-1" />
+        feedBody
       )}
 
       {showContent ? (
@@ -1618,7 +1628,10 @@ function ThreadDetailBody(
       ) : null}
 
       {showContent ? (
-        <KeyboardStickyView
+        <AndroidBlurTargetContext
+          value={Platform.OS === "android" ? composerBlurTargetRef : null}
+        >
+          <KeyboardStickyView
           enabled={keyboardStickyEnabled}
           pointerEvents="box-none"
           style={
@@ -2021,6 +2034,7 @@ function ThreadDetailBody(
             </Animated.View>
           </ComposerPopoverHost>
         </KeyboardStickyView>
+        </AndroidBlurTargetContext>
       ) : null}
     </View>
   );

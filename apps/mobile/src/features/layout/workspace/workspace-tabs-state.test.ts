@@ -224,6 +224,10 @@ vi.mock("react-native", () => ({
   useWindowDimensions: () => ({ width: 400, height: 800 }),
   View: ({ children }: { children: ReactNode }) => createElement("div", null, children),
 }));
+vi.mock("expo-blur", () => ({
+  BlurTargetView: ({ children }: { children: ReactNode }) => createElement("div", null, children),
+  BlurView: () => null,
+}));
 vi.mock("react-native-safe-area-context", () => ({
   SafeAreaInsetsContext: createContext({ top: 0, right: 0, bottom: 24, left: 0 }),
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 24, left: 0 }),

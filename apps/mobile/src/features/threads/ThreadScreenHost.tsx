@@ -1,13 +1,20 @@
+import { BlurTargetView } from "expo-blur";
 import {
   createContext,
   useContext,
   useLayoutEffect,
+  useRef,
   useState,
   useSyncExternalStore,
+  type ComponentRef,
   type ReactNode,
 } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
+import {
+  AndroidBlurTargetContext,
+  AndroidOverlayHeaderContext,
+} from "../../components/ui/AndroidBlurTargetContext";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { ThreadDetailScreen, type ThreadDetailScreenProps } from "./ThreadDetailScreen";
 
@@ -37,11 +44,34 @@ const ThreadScreenContext = createContext<ReturnType<typeof createThreadScreenSt
 function ThreadScreenOutlet() {
   const store = useContext(ThreadScreenContext)!;
   const content = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const headerBlurTargetRef = useRef<ComponentRef<typeof View> | null>(null);
   if (content === null) return null;
+  const header = "props" in content ? content.props.header : content.header;
   const body = "props" in content ? <ThreadDetailScreen {...content.props} /> : content.fallback;
+  if (Platform.OS === "android" && header) {
+    return (
+      <View className="flex-1 bg-thread-canvas">
+        <BlurTargetView ref={headerBlurTargetRef} style={{ flex: 1 }}>
+          <AndroidOverlayHeaderContext value={true}>
+            <ScreenContent surface="canvas">{body}</ScreenContent>
+          </AndroidOverlayHeaderContext>
+        </BlurTargetView>
+        <View
+          pointerEvents="box-none"
+          style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }}
+        >
+          <AndroidOverlayHeaderContext value={true}>
+            <AndroidBlurTargetContext value={headerBlurTargetRef}>
+              {header}
+            </AndroidBlurTargetContext>
+          </AndroidOverlayHeaderContext>
+        </View>
+      </View>
+    );
+  }
   return (
     <>
-      {"props" in content ? content.props.header : content.header}
+      {header}
       <ScreenContent surface="canvas">{body}</ScreenContent>
     </>
   );
@@ -54,7 +84,7 @@ export function ThreadScreenHost({ children }: { readonly children: ReactNode })
   return (
     <ThreadScreenContext.Provider value={store}>
       {children}
-      <View className="flex-1 bg-screen android:bg-header">
+      <View className="flex-1 bg-screen android:bg-thread-canvas">
         <ThreadScreenOutlet />
       </View>
     </ThreadScreenContext.Provider>

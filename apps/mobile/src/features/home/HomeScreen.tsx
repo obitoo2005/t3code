@@ -202,10 +202,7 @@ export function HomeScreen(props: HomeScreenProps) {
   const primaryColumn = use(NativePrimaryColumnContext);
   const sidebarSurface = usePaneRole() === "sidebar" && primaryColumn !== null;
   const contentBackground = sidebarSurface ? "bg-drawer" : "bg-screen";
-  const containerClassName = cn(
-    "flex-1",
-    Platform.OS === "android" ? "bg-header" : contentBackground,
-  );
+  const containerClassName = cn("flex-1", contentBackground);
   const columnMetrics = useNativeColumnLayoutMetrics();
   const activeNewTask = useActiveNewTask();
   const sidebarRowThreadKey = useSidebarRowThreadKey(primaryColumn?.selectedThreadKey ?? null);

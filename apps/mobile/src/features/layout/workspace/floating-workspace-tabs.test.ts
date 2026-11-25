@@ -6,8 +6,8 @@ import { resolveAndroidNavigationStyle } from "../../../lib/androidNavigationSty
 it.each([
   [undefined, "Samsung", false, "one-ui"],
   [undefined, "samsung", false, "one-ui"],
-  [undefined, "Google", false, "material"],
-  [undefined, null, false, "material"],
+  [undefined, "Google", false, "one-ui"],
+  [undefined, null, false, "one-ui"],
   [undefined, "Google", true, "one-ui"],
   ["material", "Samsung", false, "material"],
   ["one-ui", "Google", false, "one-ui"],

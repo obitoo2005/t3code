@@ -59,7 +59,7 @@ export function AndroidWorkspaceSidebar() {
                 sidebar
                 selectedIssueKey={selectedIssue}
                 renderFrame={(filters, list) => (
-                  <View className="flex-1 bg-header">
+                  <View className="flex-1 bg-screen">
                     <ListSearchToolbar
                       tab="issues"
                       filters={filters}
@@ -76,7 +76,7 @@ export function AndroidWorkspaceSidebar() {
                 sidebar
                 selectedPullRequestKey={selectedPullRequest}
                 renderFrame={(filters, list) => (
-                  <View className="flex-1 bg-header">
+                  <View className="flex-1 bg-screen">
                     <ListSearchToolbar
                       tab="pullRequests"
                       filters={filters}

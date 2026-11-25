@@ -1,12 +1,14 @@
+import { BlurTargetView } from "expo-blur";
 import { useGT } from "gt-react-native";
 import { useAndroidFloatingTabs } from "../../settings/appearance/AppearancePreferencesProvider";
 import { WorkspaceNoTabs } from "./WorkspaceNoTabs";
 import { useEnabledNavigationTabs } from "./navigation-tabs";
 import { NAVIGATION_TAB_ORDER } from "./navigation-tab-order";
 import { WorkspaceExtraTab } from "./WorkspaceExtraTab";
-import type { ReactNode } from "react";
+import { useRef, type ComponentRef, type ReactNode } from "react";
 import { View } from "react-native";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
+import { AndroidBlurTargetContext } from "../../../components/ui/AndroidBlurTargetContext";
 import { NativeStackScreenOptions } from "../../../native/StackHeader";
 import { AppBar } from "../../../components/ui/AppBar";
 import { WorkspaceEmptyDetail } from "../WorkspaceEmptyDetail";
@@ -42,6 +44,7 @@ function WorkspaceRoot() {
   const workspace = useWorkspaceTabs()!;
   const enabled = useEnabledNavigationTabs();
   const insets = useSafeAreaInsets();
+  const blurTargetRef = useRef<ComponentRef<typeof View> | null>(null);
   const { fabClearance, fabSize } = useAndroidControlSizing();
   const context = {
     ...workspace,
@@ -69,78 +72,82 @@ function WorkspaceRoot() {
 
   return (
     <WorkspaceTabsContext value={context}>
-      <View className={layout.usesSplitView ? "flex-1 bg-screen" : "flex-1 bg-header"}>
+      <View className="flex-1 bg-screen">
         {!layout.usesSplitView ? (
           <NativeStackScreenOptions options={{ headerShown: false }} />
         ) : null}
-        <SafeAreaInsetsContext
-          value={
-            layout.usesSplitView
-              ? insets
-              : floatingTabsEnabled
-                ? !workspaceUsesColumns(tab)
-                  ? { ...insets, bottom: context.bottomClearance }
-                  : insets
-                : { ...insets, bottom: 0 }
-          }
-        >
-          {enabled.length === 0 ? (
-            layout.usesSplitView ? (
-              <View className="flex-1 bg-screen" />
+        <BlurTargetView ref={blurTargetRef} style={{ flex: 1 }}>
+          <SafeAreaInsetsContext
+            value={
+              layout.usesSplitView
+                ? insets
+                : floatingTabsEnabled
+                  ? !workspaceUsesColumns(tab)
+                    ? { ...insets, bottom: context.bottomClearance }
+                    : insets
+                  : { ...insets, bottom: 0 }
+            }
+          >
+            {enabled.length === 0 ? (
+              layout.usesSplitView ? (
+                <View className="flex-1 bg-screen" />
+              ) : (
+                <WorkspaceNoTabs />
+              )
             ) : (
-              <WorkspaceNoTabs />
-            )
-          ) : (
-            <WorkspaceAppBarScope enabled={!layout.usesSplitView}>
-              <WorkspaceTabPanes
-                tabs={TABS}
-                selected={tab}
-                renderTab={(tab) =>
-                  tab === "threads" ? (
-                    <HomeRouteScreen />
-                  ) : tab === "usage" || tab === "workflows" ? (
-                    <WorkspacePageFrame width={workspacePageWidth ?? null}>
-                      <WorkspaceExtraTab tab={tab} />
-                    </WorkspacePageFrame>
-                  ) : layout.usesSplitView ? (
-                    <>
-                      <NativeStackScreenOptions options={{ headerShown: false }} />
-                      <AppBar
-                        embedded
-                        title={
-                          tab === "issues"
-                            ? gt("Issues", { $context: "screen title, list of issues" })
-                            : gt("Pull requests")
-                        }
+              <WorkspaceAppBarScope enabled={!layout.usesSplitView}>
+                <WorkspaceTabPanes
+                  tabs={TABS}
+                  selected={tab}
+                  renderTab={(tab) =>
+                    tab === "threads" ? (
+                      <HomeRouteScreen />
+                    ) : tab === "usage" || tab === "workflows" ? (
+                      <WorkspacePageFrame width={workspacePageWidth ?? null}>
+                        <WorkspaceExtraTab tab={tab} />
+                      </WorkspacePageFrame>
+                    ) : layout.usesSplitView ? (
+                      <>
+                        <NativeStackScreenOptions options={{ headerShown: false }} />
+                        <AppBar
+                          embedded
+                          title={
+                            tab === "issues"
+                              ? gt("Issues", { $context: "screen title, list of issues" })
+                              : gt("Pull requests")
+                          }
+                        />
+                        <WorkspaceEmptyDetail tab={tab} />
+                      </>
+                    ) : tab === "issues" ? (
+                      <IssuesScreen
+                        renderFrame={(filters, list) => (
+                          <>
+                            <ListSearchToolbar tab="issues" filters={filters} />
+                            <ScreenContent>{list}</ScreenContent>
+                          </>
+                        )}
                       />
-                      <WorkspaceEmptyDetail tab={tab} />
-                    </>
-                  ) : tab === "issues" ? (
-                    <IssuesScreen
-                      renderFrame={(filters, list) => (
-                        <>
-                          <ListSearchToolbar tab="issues" filters={filters} />
-                          <ScreenContent>{list}</ScreenContent>
-                        </>
-                      )}
-                    />
-                  ) : (
-                    <PullRequestsScreen
-                      renderFrame={(filters, list) => (
-                        <>
-                          <ListSearchToolbar tab="pullRequests" filters={filters} />
-                          <ScreenContent>{list}</ScreenContent>
-                        </>
-                      )}
-                    />
-                  )
-                }
-              />
-            </WorkspaceAppBarScope>
-          )}
-        </SafeAreaInsetsContext>
+                    ) : (
+                      <PullRequestsScreen
+                        renderFrame={(filters, list) => (
+                          <>
+                            <ListSearchToolbar tab="pullRequests" filters={filters} />
+                            <ScreenContent>{list}</ScreenContent>
+                          </>
+                        )}
+                      />
+                    )
+                  }
+                />
+              </WorkspaceAppBarScope>
+            )}
+          </SafeAreaInsetsContext>
+        </BlurTargetView>
         {layout.usesSplitView ? null : floatingTabsEnabled ? (
-          <FloatingWorkspaceTabs fillWidth onNewThread={startNewTask} />
+          <AndroidBlurTargetContext value={blurTargetRef}>
+            <FloatingWorkspaceTabs fillWidth onNewThread={startNewTask} />
+          </AndroidBlurTargetContext>
         ) : (
           <AndroidWorkspaceNavigation onNewThread={startNewTask} />
         )}

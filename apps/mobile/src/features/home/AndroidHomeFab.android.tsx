@@ -63,23 +63,17 @@ export function AndroidHomeFabLayout(props: ComponentProps<typeof SharedAndroidH
         <FabScrollContext value={onScroll}>{props.children}</FabScrollContext>
       </WorkspaceTabsContext>
       {!props.disabled &&
-      (!props.sidebar || floatingTabsEnabled) &&
+      !floatingTabsEnabled &&
+      !props.sidebar &&
       state.hasConnections &&
       layoutWidth !== null ? (
         <ScrollComposeButton
           key={`${appearance.baseFontSize}:${fontScale}:${layoutWidth}`}
           size={size}
-          expanded={floatingTabsEnabled ? false : expanded}
+          expanded={expanded}
           onPress={props.onStartNewTask}
           className="absolute"
-          style={
-            floatingTabsEnabled
-              ? {
-                  right: FLOATING_TABS.edge,
-                  bottom: insets.bottom + FLOATING_TABS.bottom,
-                }
-              : androidHomeFabPosition(insets.bottom, props.sidebar)
-          }
+          style={androidHomeFabPosition(insets.bottom, props.sidebar)}
         />
       ) : null}
     </View>

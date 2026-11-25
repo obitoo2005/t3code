@@ -39,17 +39,30 @@ export function ScreenContent({
     );
   }
 
-  return (
-    <View className={fitToContents ? "shrink bg-header" : "flex-1 bg-header"}>
+  const useCardInset = insetHorizontal ?? layout.usesSplitView;
+  if (!useCardInset) {
+    return (
       <View
-        className={`overflow-hidden rounded-t-[28px] ${SURFACE_CLASS_NAMES[surface]}`}
+        className={`${fitToContents ? "shrink" : "flex-1"} ${SURFACE_CLASS_NAMES[surface]}`}
+        collapsable={false}
+        onLayout={onLayout}
+      >
+        {children}
+      </View>
+    );
+  }
+
+  return (
+    <View className={fitToContents ? "shrink bg-screen" : "flex-1 bg-screen"}>
+      <View
+        className={`overflow-hidden rounded-t-[24px] ${SURFACE_CLASS_NAMES[surface]}`}
         collapsable={false}
         onLayout={onLayout}
         style={{
           flexShrink: 1,
           flexGrow: fitToContents ? 0 : 1,
           flexBasis: fitToContents ? "auto" : 0,
-          marginHorizontal: (insetHorizontal ?? layout.usesSplitView) ? 4 : 0,
+          marginHorizontal: 4,
         }}
       >
         {children}

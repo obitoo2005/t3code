@@ -14,7 +14,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAdaptiveWorkspaceLayout } from "../features/layout/AdaptiveWorkspaceLayout";
 import { useSidebarWorkspaceTabs } from "../features/layout/workspace/useSystemWorkspaceTabBar";
-import { useAndroidFloatingTabs } from "../features/settings/appearance/AppearancePreferencesProvider";
+import {
+  useAndroidFloatingTabs,
+  useAppearancePreferences,
+} from "../features/settings/appearance/AppearancePreferencesProvider";
 import { compactEditorInsets } from "../features/threads/compactEditorInsets";
 import {
   useDeviceType,
@@ -175,6 +178,8 @@ export function ComposerSurface(props: {
   readonly animateLayout?: boolean;
 }) {
   const colors = useUniwindTheme();
+  const { themeAppearance } = useAppearancePreferences();
+  const isDark = themeAppearance === "dark";
   const targetBorderRadius =
     typeof props.style.borderRadius === "number" ? props.style.borderRadius : 0;
   const shouldAnimate = props.animateLayout !== false && Platform.OS !== "android";
@@ -192,6 +197,15 @@ export function ComposerSurface(props: {
     ...(borderCurve ? { borderCurve } : {}),
   }));
   const layoutTransition = shouldAnimate ? COMPOSER_LAYOUT_TRANSITION : undefined;
+  const androidRimStyle: ViewStyle | undefined =
+    Platform.OS === "android"
+      ? {
+          borderWidth: 1,
+          borderColor: isDark ? "rgba(255, 255, 255, 0.13)" : "rgba(0, 0, 0, 0.09)",
+          borderTopColor: isDark ? "rgba(255, 255, 255, 0.24)" : "rgba(255, 255, 255, 0.92)",
+          borderBottomColor: isDark ? "rgba(255, 255, 255, 0.07)" : "rgba(0, 0, 0, 0.11)",
+        }
+      : undefined;
 
   // Animate every native frame or glass and content jump to final height inside the clip.
   return (
@@ -210,12 +224,12 @@ export function ComposerSurface(props: {
       <AnimatedGlassSurface
         chrome="none"
         fallbackColor={colors["--color-composer-surface"]}
-        fallbackClassName="border border-composer-border"
+        fallbackClassName={Platform.OS === "android" ? undefined : "border border-composer-border"}
         glassEffectStyle="regular"
         pointerEvents="none"
         tintColor="transparent"
         layout={layoutTransition}
-        style={[{ position: "absolute", inset: 0 }, animatedShapeStyle]}
+        style={[{ position: "absolute", inset: 0 }, animatedShapeStyle, androidRimStyle]}
       >
         {null}
       </AnimatedGlassSurface>

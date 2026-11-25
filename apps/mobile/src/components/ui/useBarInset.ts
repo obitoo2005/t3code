@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
+import { AndroidOverlayHeaderContext } from "./AndroidBlurTargetContext";
 import { useToolbarLayout } from "./useToolbarLayout";
 
 /**
@@ -30,21 +31,26 @@ export function useBarInset(): number {
 
 /**
  * How far the bar covers the top of the body below it: the bar inset where the body runs under
- * the iOS bar, 0 on Android, where the bar sits above the body in flow.
+ * the iOS bar or a floating Android glass bar, 0 where Android sits in flow.
  */
 export function useBarOverlap(): number {
   const barInset = useBarInset();
-  return Platform.OS === "android" ? 0 : barInset;
+  const androidOverlayHeader = use(AndroidOverlayHeaderContext);
+  return Platform.OS === "android" && !androidOverlayHeader ? 0 : barInset;
 }
 
 /**
- * The content's top safe area under the AppBar: the height of the iOS bar its column lays content
- * under, glass or solid, and zero on Android, where the bar sits in flow. For manual scroll
- * content insets.
+ * The content's top safe area under the AppBar: the height of the bar content lays under
+ * (iOS glass/solid bar or floating Android glass header), and zero where Android sits in flow.
  */
 export function useContentTopInset(): number {
   const insets = useSafeAreaInsets();
   const columnMetrics = useNativeColumnLayoutMetrics();
+  const barInset = useBarInset();
+  const androidOverlayHeader = use(AndroidOverlayHeaderContext);
+  if (Platform.OS === "android") {
+    return androidOverlayHeader ? barInset : 0;
+  }
   return Platform.OS === "ios" ? (columnMetrics?.safeArea.top ?? insets.top) : 0;
 }
 

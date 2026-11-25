@@ -176,7 +176,7 @@ function AppBarView(props: AppBarProps & { readonly searchState?: SearchState })
       <NativeStackScreenOptions
         options={{
           ...(props.matchSearchSurface
-            ? { contentStyle: { backgroundColor: themeVariables["--color-header"] } }
+            ? { contentStyle: { backgroundColor: themeVariables["--color-screen"] } }
             : undefined),
           headerShown: false,
           title: props.title,
@@ -223,11 +223,10 @@ function AppBarView(props: AppBarProps & { readonly searchState?: SearchState })
           : actions
       }
       trailing={
-        menuView?.length || props.trailing || props.confirm || closeInspector ? (
+        menuView?.length || props.trailing || closeInspector ? (
           <>
             {menuView}
             {props.trailing}
-            {confirmButton}
             {closeInspector ? (
               <AndroidHeaderIconButton
                 accessibilityLabel={gt("Close inspector")}
@@ -238,6 +237,7 @@ function AppBarView(props: AppBarProps & { readonly searchState?: SearchState })
           </>
         ) : undefined
       }
+      trailingAccessory={confirmButton}
     />
   );
   if (!search) {
@@ -253,34 +253,35 @@ function AppBarView(props: AppBarProps & { readonly searchState?: SearchState })
       {options}
       {searching ? (
         <View
-          className="border-b border-header-border bg-header"
-          // Match Material TopAppBar's 4dp icon inset so buttons stay where the bar drew them.
+          className="bg-screen"
           style={{
             paddingTop,
             paddingBottom,
-            paddingHorizontal: 4,
-            borderBottomWidth: props.hideBottomBorder ? 0 : undefined,
+            paddingHorizontal: 14,
           }}
         >
-          <View className="flex-row items-center gap-1" style={{ height }}>
+          <View className="flex-row items-center gap-2" style={{ height }}>
             {inline ? (
               props.onClose ? (
                 <ScreenHeaderButton
+                  standalone
                   accessibilityLabel={props.closeAccessibilityLabel ?? gt("Close")}
                   icon="xmark"
                   onPress={props.onClose}
                 />
               ) : props.onBack ? (
                 <ScreenHeaderButton
+                  standalone
                   accessibilityLabel={gt("Navigate up")}
-                  icon="arrow.left"
+                  icon="chevron.left"
                   onPress={props.onBack}
                 />
               ) : null
             ) : (
               <ScreenHeaderButton
+                standalone
                 accessibilityLabel={search.closeAccessibilityLabel ?? gt("Close search")}
-                icon="arrow.left"
+                icon="chevron.left"
                 onPress={closeSearch}
               />
             )}
