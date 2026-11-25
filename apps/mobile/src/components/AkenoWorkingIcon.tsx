@@ -34,7 +34,7 @@ export const AkenoWorkingIcon = memo(function AkenoWorkingIcon(props: {
   readonly tapCount?: number;
   readonly size?: number;
 }) {
-  const size = props.size ?? 24;
+  const size = props.size ?? 34;
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
   const shouldAnimate = props.active && appActive && !reducedMotion;
