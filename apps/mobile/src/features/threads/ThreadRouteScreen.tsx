@@ -1043,6 +1043,10 @@ function ThreadRouteContent(
               <ThreadHeader
                 title={selectedThread.title}
                 subtitle={threadStatusLabel ?? headerSubtitle}
+                threadRef={{
+                  environmentId: selectedThread.environmentId,
+                  threadId: selectedThread.id,
+                }}
                 gitControls={threadGitControlProps}
                 hasThreadCwd={selectedThreadCwd !== null}
                 inspectorMode={inspectorMode}

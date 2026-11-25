@@ -156,7 +156,13 @@ function AppBarView(props: AppBarProps & { readonly searchState?: SearchState })
       onPressAction={({ nativeEvent }) => selectMenuItem(menu.items, nativeEvent.event)}
     >
       {(open) => (
-        <ScreenHeaderButton accessibilityLabel={menu.title} icon={menu.icon} onPress={open} />
+        <ScreenHeaderButton
+          accessibilityLabel={menu.title}
+          icon={menu.icon}
+          badgeCount={menu.badgeCount}
+          badgeTone={menu.badgeTone}
+          onPress={open}
+        />
       )}
     </AndroidAnchoredMenu>
   ));

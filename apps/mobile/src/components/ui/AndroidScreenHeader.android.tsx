@@ -43,17 +43,38 @@ export function AndroidHeaderIconButton(props: {
   readonly disabled?: boolean;
   readonly selected?: boolean;
   readonly iconScale?: number;
+  readonly badgeCount?: number;
+  readonly badgeTone?: "default" | "warning" | "accent";
   /** Render inside its own standalone circular glass pill (e.g., outside a grouped capsule). */
   readonly standalone?: boolean;
 }) {
-  const { themeAppearance } = useAppearancePreferences();
+  const { themeAppearance, themeId } = useAppearancePreferences();
   const isDark = themeAppearance === "dark";
+  const isCrimson = themeId === "rias-crimson";
   const { scale } = useAndroidControlSizing();
   const pillHeight = Math.round(GLASS_PILL_HEIGHT * Math.min(scale, 1.15));
   const slotWidth = Math.round(GLASS_ICON_SLOT * Math.min(scale, 1.15));
   const glyphSize = Math.round(20 * Math.min(scale, 1.15) * (props.iconScale ?? 1));
   const iconName =
     props.icon === "ellipsis" ? ({ ios: "ellipsis", android: "more_vert" } as const) : props.icon;
+  const badgeBg =
+    props.badgeTone === "warning"
+      ? "#F59E0B"
+      : props.badgeTone === "accent"
+        ? "#6366F1"
+        : isCrimson
+          ? "#E11D48"
+          : isDark
+            ? "rgba(255, 255, 255, 0.90)"
+            : "#18181B";
+  const badgeFg =
+    props.badgeTone === "warning"
+      ? "#18181B"
+      : props.badgeTone === "accent" || isCrimson
+        ? "#FFFFFF"
+        : isDark
+          ? "#0A0A0A"
+          : "#FFFFFF";
 
   const glyph = (
     <View
@@ -88,6 +109,39 @@ export function AndroidHeaderIconButton(props: {
         }
         type="monochrome"
       />
+      {props.badgeCount !== undefined && props.badgeCount > 0 ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 5,
+            right: 3,
+            minWidth: 15,
+            height: 15,
+            paddingHorizontal: 3.5,
+            borderRadius: 999,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: badgeBg,
+            borderWidth: 1,
+            borderColor: isDark ? "rgba(10, 10, 10, 0.72)" : "rgba(255, 255, 255, 0.92)",
+          }}
+        >
+          <AppText
+            allowFontScaling={false}
+            style={{
+              fontSize: 9,
+              lineHeight: 10,
+              fontWeight: "800",
+              color: badgeFg,
+              fontVariant: ["tabular-nums"],
+              includeFontPadding: false,
+            }}
+          >
+            {props.badgeCount > 9 ? "9+" : String(props.badgeCount)}
+          </AppText>
+        </View>
+      ) : null}
     </View>
   );
 

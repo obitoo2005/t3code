@@ -46,6 +46,8 @@ export interface AppBarMenu {
   readonly title: string;
   readonly icon: AppSymbolName;
   readonly status?: string;
+  readonly badgeCount?: number;
+  readonly badgeTone?: "default" | "warning" | "accent";
   readonly separateBackground?: boolean;
   readonly items: ReadonlyArray<AppBarMenuItem>;
 }

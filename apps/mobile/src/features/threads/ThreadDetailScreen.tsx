@@ -1695,7 +1695,10 @@ function ThreadDetailBody(
                           position: "absolute",
                           bottom: controlInsets.bottom,
                           left: controlInsets.left,
-                          paddingTop: FLOATING_WORKING_CONTROL_COVERAGE,
+                          paddingTop: Math.max(
+                            FLOATING_WORKING_CONTROL_COVERAGE,
+                            Platform.OS === "android" ? 76 : 0,
+                          ),
                         },
                         columnComposerWidthStyle,
                       ]
@@ -1705,7 +1708,10 @@ function ThreadDetailBody(
                           bottom: controlInsets.bottom,
                           left: controlInsets.left,
                           right: controlInsets.right,
-                          paddingTop: FLOATING_WORKING_CONTROL_COVERAGE,
+                          paddingTop: Math.max(
+                            FLOATING_WORKING_CONTROL_COVERAGE,
+                            Platform.OS === "android" ? 76 : 0,
+                          ),
                         },
                         composerWidthStyle,
                       ]
@@ -1793,7 +1799,7 @@ function ThreadDetailBody(
                       threadRef={props.selectedThreadDetailRef}
                       canOperateThread={props.canOperateThread}
                     />
-                    {props.draftMode ? null : (
+                    {props.draftMode || Platform.OS === "android" ? null : (
                       <ThreadSideChatsRow
                         environmentId={props.environmentId}
                         threadId={props.selectedThread.id}
@@ -2034,6 +2040,13 @@ function ThreadDetailBody(
                         }
                         canSteerActiveTurn={props.canSteerActiveTurn}
                         hidden={composerSlotHidden}
+                        hideQuotaMascot={
+                          usageLimitsReport !== null ||
+                          props.activePendingApproval !== null ||
+                          props.activePendingUserInput !== null ||
+                          composerError !== null ||
+                          props.queuedRunEdit !== null
+                        }
                         queuedEdit={
                           props.queuedRunEdit === null
                             ? null

@@ -175,6 +175,7 @@ export interface ThreadComposerProps {
   readonly followUpBehavior: FollowUpBehavior;
   readonly canSteerActiveTurn: boolean;
   readonly hidden: boolean;
+  readonly hideQuotaMascot?: boolean;
   readonly editorRef?: RefObject<ComposerEditorHandle | null>;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onPickDraftMedia: () => Promise<void>;
@@ -733,6 +734,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
 
   const showQuotaMascot =
     Platform.OS === "android" &&
+    !props.hideQuotaMascot &&
     !isVoiceInputPresented &&
     !(
       !isSubmissionLocked &&
@@ -745,7 +747,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       onLayout={(event) => props.onHeightChange?.(event.nativeEvent.layout.height)}
       className="px-[12px]"
       style={{
-        paddingTop: showQuotaMascot ? 0 : 6,
+        paddingTop: 6,
         paddingBottom: (props.bottomInset ?? 0) + THREAD_COMPOSER_BOTTOM_GUTTER,
         backgroundColor:
           Platform.OS === "android" && !showQuotaMascot
@@ -764,8 +766,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       />
       <Animated.View
         className="relative w-full self-center"
-        style={{ maxWidth: props.contentMaxWidth }}
+        style={{ maxWidth: props.contentMaxWidth, overflow: "visible" }}
       >
+        {props.draftControls}
         {!isSubmissionLocked &&
         composerMenu.trigger &&
         (composerMenu.items.length > 0 || composerMenu.trigger.kind === "pull-request") ? (
@@ -809,19 +812,28 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
           />
         ) : null}
 
-        {showQuotaMascot || props.draftControls ? (
-          <View
-            pointerEvents="box-none"
-            className="flex-row items-end justify-between"
-            style={{ zIndex: 10 }}
-          >
-            <View pointerEvents="box-none" className="min-w-0 flex-1">
-              {props.draftControls}
-            </View>
-            {showQuotaMascot ? (
+        <View className="relative" style={{ overflow: "visible" }}>
+          {Platform.OS === "android" && showQuotaMascot ? (
+            <>
+              <View
+                pointerEvents="none"
+                style={{
+                  position: "absolute",
+                  left: -100,
+                  right: -100,
+                  top: 24,
+                  bottom: -((props.bottomInset ?? 0) + THREAD_COMPOSER_BOTTOM_GUTTER),
+                  backgroundColor: themeColorWithAlpha(composerPanel, 1),
+                }}
+              />
               <View
                 pointerEvents="box-none"
-                style={{ marginRight: 16, marginBottom: -7, zIndex: 12 }}
+                style={{
+                  position: "absolute",
+                  right: 16,
+                  top: -65,
+                  zIndex: 12,
+                }}
               >
                 <ComposerQuotaMascot
                   environmentId={props.environmentId}
@@ -829,27 +841,11 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   modelSelection={currentModelSelection}
                   serverConfig={props.serverConfig}
                   activeThreadBusy={props.activeThreadBusy}
-                  size={74}
+                  size={72}
                   onPressOpenLimits={usageLimitsOffered ? openUsageLimits : undefined}
                 />
               </View>
-            ) : null}
-          </View>
-        ) : null}
-
-        <View className="relative">
-          {Platform.OS === "android" && showQuotaMascot ? (
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                left: -100,
-                right: -100,
-                top: 24,
-                bottom: -((props.bottomInset ?? 0) + THREAD_COMPOSER_BOTTOM_GUTTER),
-                backgroundColor: themeColorWithAlpha(composerPanel, 1),
-              }}
-            />
+            </>
           ) : null}
           <ComposerSurface
           animateLayout={false}
