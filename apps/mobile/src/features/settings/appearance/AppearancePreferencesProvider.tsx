@@ -1,5 +1,7 @@
-import { createContext, startTransition, use, useMemo, type ReactNode } from "react";
+import { createContext, startTransition, use, useEffect, useMemo, type ReactNode } from "react";
 import { AppState, Appearance, Platform, useColorScheme } from "react-native";
+
+import { setUiSoundFxEnabled } from "../../../lib/uiSoundFx";
 
 import { manufacturer } from "expo-device";
 import {
@@ -73,6 +75,8 @@ interface AppearancePreferencesContextValue {
   readonly setCodeWordBreak: (value: boolean) => void;
   readonly mathRenderingEnabled: boolean;
   readonly setMathRenderingEnabled: (value: boolean) => void;
+  readonly soundFxEnabled: boolean;
+  readonly setSoundFxEnabled: (value: boolean) => void;
 }
 
 const AppearancePreferencesContext = createContext<AppearancePreferencesContextValue | null>(null);
@@ -296,6 +300,16 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   const setMathRenderingEnabled = (value: boolean) =>
     updatePreferences({ mathRenderingEnabled: value });
 
+  const soundFxEnabled = storedPreferences?.soundFxEnabled !== false;
+  const setSoundFxEnabled = (value: boolean) => {
+    setUiSoundFxEnabled(value);
+    updatePreferences({ soundFxEnabled: value });
+  };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- syncs persisted soundFxEnabled flag to imperative audio helper
+  useEffect(() => {
+    setUiSoundFxEnabled(soundFxEnabled);
+  }, [soundFxEnabled]);
+
   const value = useMemo(
     (): AppearancePreferencesContextValue => ({
       appearance,
@@ -320,6 +334,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setCodeWordBreak,
       mathRenderingEnabled,
       setMathRenderingEnabled,
+      soundFxEnabled,
+      setSoundFxEnabled,
     }),
     [
       appearance,
@@ -343,6 +359,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setCodeWordBreak,
       mathRenderingEnabled,
       setMathRenderingEnabled,
+      soundFxEnabled,
+      setSoundFxEnabled,
     ],
   );
 

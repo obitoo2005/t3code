@@ -1,6 +1,7 @@
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import type { ReactNode } from "react";
 
+import { RiasMascot } from "../RiasMascot";
 import { AppText as Text } from "./AppText";
 import { Button } from "./Button";
 
@@ -15,6 +16,11 @@ export function EmptyState(props: {
   if (props.variant === "plain") {
     return (
       <View className="items-center px-8 py-8">
+        {Platform.OS === "android" ? (
+          <View className="mb-4">
+            <RiasMascot size={108} />
+          </View>
+        ) : null}
         <Text textRole="title" className="text-center font-t3-bold text-foreground">
           {props.title}
         </Text>

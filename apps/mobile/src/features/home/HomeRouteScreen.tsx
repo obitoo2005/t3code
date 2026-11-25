@@ -15,6 +15,7 @@ import { steadyNavigationThreadShellsAtom } from "../../state/threads";
 import { useLaunchingThreads, usePendingNewTasks } from "../../state/use-pending-new-tasks";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
+import { useRetryEnvironment } from "../connection/useRetryEnvironment";
 import {
   useAdaptiveWorkspaceLayout,
   useWorkspacePaneState,
@@ -57,6 +58,15 @@ export function HomeRouteScreen() {
   );
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
+  const retryEnvironment = useRetryEnvironment();
+  const handleRefreshThreads = async () => {
+    const retryTargets = workspaceEnvironments.filter(
+      (environment) => environment.isEnabled && environment.connectionState !== "connected",
+    );
+    await Promise.allSettled(
+      retryTargets.map((environment) => Promise.resolve(retryEnvironment(environment.environmentId))),
+    );
+  };
   const navigation = useNavigation();
   const selectTab = useSelectWorkspaceTab();
   const workspace = useWorkspaceTabs();
@@ -164,7 +174,7 @@ export function HomeRouteScreen() {
     <AndroidHomeFabLayout onStartNewTask={startNewTask}>
       <>
         <WorkspaceListHeader
-          accessibilityLabel={gt("T3 Code, Threads")}
+          accessibilityLabel={gt("Rias Code, Threads")}
           onOpenEnvironments={() => openSettings(navigation, "SettingsEnvironments")}
           search={{
             value: searchQuery,
@@ -207,6 +217,7 @@ export function HomeRouteScreen() {
           onEnvironmentChange={setSelectedEnvironmentId}
           onProjectChange={setSelectedProjectKey}
           onOpenSettings={() => selectTab("settings")}
+          onRefresh={handleRefreshThreads}
           onSearchQueryChange={setSearchQuery}
           onSelectThread={handleSelectThread}
           onSelectPendingTask={openPendingTask}

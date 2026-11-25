@@ -60,6 +60,10 @@ export function isAudioSessionOwner(token: AudioSessionToken): boolean {
   return owner === token && !token.released;
 }
 
+export function isAudioSessionBusy(): boolean {
+  return owner !== null && !owner.released;
+}
+
 export function activateAudioSession(
   token: AudioSessionToken,
   options: { readonly nativePlayback?: boolean; readonly allowBluetoothRecording?: boolean } = {},

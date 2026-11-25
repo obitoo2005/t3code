@@ -40,6 +40,7 @@ import {
 import Animated, { FadeIn, FadeOut, ReduceMotion } from "react-native-reanimated";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { themeColorWithAlpha } from "../../lib/mobileTheme";
+import { playUiSound } from "../../lib/uiSoundFx";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import {
@@ -583,6 +584,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       return;
     }
     if (sent.value === null) return;
+    playUiSound("send");
     // Arm after send so preference reads and native Activity startup do not delay tap-frame feedback.
     armAgentAwarenessLiveActivityForLocalWork({
       environmentId: props.environmentId,

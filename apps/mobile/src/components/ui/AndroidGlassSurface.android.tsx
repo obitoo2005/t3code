@@ -38,8 +38,41 @@ const SPRING_CONFIG = {
   reduceMotion: ReduceMotion.System,
 };
 
-function glassPalette(isDark: boolean, tone: AndroidGlassTone, hasLiveBlur: boolean) {
+function glassPalette(
+  isDark: boolean,
+  tone: AndroidGlassTone,
+  hasLiveBlur: boolean,
+  isCrimson: boolean,
+) {
   if (isDark) {
+    if (isCrimson) {
+      const tint =
+        tone === "menu"
+          ? hasLiveBlur
+            ? "rgba(30, 15, 21, 0.76)"
+            : "rgba(28, 14, 20, 0.95)"
+          : tone === "composer"
+            ? hasLiveBlur
+              ? "rgba(32, 16, 22, 0.68)"
+              : "rgba(29, 15, 21, 0.92)"
+            : tone === "elevated"
+              ? hasLiveBlur
+                ? "rgba(38, 19, 27, 0.60)"
+                : "rgba(34, 17, 24, 0.90)"
+              : hasLiveBlur
+                ? "rgba(34, 17, 24, 0.58)"
+                : "rgba(30, 15, 21, 0.90)";
+      return {
+        tint,
+        border: "rgba(244, 63, 94, 0.24)",
+        borderTop: "rgba(255, 136, 162, 0.42)",
+        borderBottom: tone === "menu" ? "rgba(225, 29, 72, 0.14)" : "rgba(225, 29, 72, 0.12)",
+        sheenColor: "255, 206, 220",
+        sheenTop: tone === "menu" ? 0.14 : 0.16,
+        sheenMid: tone === "menu" ? 0.025 : 0.022,
+        sheenBottom: 0.06,
+      };
+    }
     const tint =
       tone === "menu"
         ? hasLiveBlur
@@ -61,13 +94,25 @@ function glassPalette(isDark: boolean, tone: AndroidGlassTone, hasLiveBlur: bool
       border: "rgba(255, 255, 255, 0.14)",
       borderTop: "rgba(255, 255, 255, 0.28)",
       borderBottom: tone === "menu" ? "rgba(255, 255, 255, 0.08)" : "rgba(255, 255, 255, 0.07)",
+      sheenColor: "255, 255, 255",
       sheenTop: tone === "menu" ? 0.12 : 0.14,
       sheenMid: tone === "menu" ? 0.018 : 0.015,
       sheenBottom: 0.045,
     };
   }
-  const tint =
-    tone === "menu"
+  const tint = isCrimson
+    ? tone === "menu"
+      ? hasLiveBlur
+        ? "rgba(255, 248, 250, 0.84)"
+        : "rgba(255, 246, 249, 0.97)"
+      : tone === "composer"
+        ? hasLiveBlur
+          ? "rgba(255, 249, 251, 0.80)"
+          : "rgba(253, 243, 246, 0.95)"
+        : hasLiveBlur
+          ? "rgba(255, 248, 250, 0.74)"
+          : "rgba(254, 245, 248, 0.94)"
+    : tone === "menu"
       ? hasLiveBlur
         ? "rgba(252, 252, 255, 0.80)"
         : "rgba(250, 250, 253, 0.96)"
@@ -80,9 +125,10 @@ function glassPalette(isDark: boolean, tone: AndroidGlassTone, hasLiveBlur: bool
           : "rgba(252, 252, 254, 0.92)";
   return {
     tint,
-    border: "rgba(0, 0, 0, 0.09)",
+    border: isCrimson ? "rgba(190, 18, 60, 0.16)" : "rgba(0, 0, 0, 0.09)",
     borderTop: "rgba(255, 255, 255, 0.95)",
-    borderBottom: "rgba(0, 0, 0, 0.11)",
+    borderBottom: isCrimson ? "rgba(190, 18, 60, 0.18)" : "rgba(0, 0, 0, 0.11)",
+    sheenColor: "255, 255, 255",
     sheenTop: tone === "menu" ? 0.42 : 0.52,
     sheenMid: 0.08,
     sheenBottom: 0.2,
@@ -105,12 +151,13 @@ export function AndroidGlassSurface({
   contentStyle,
   ...props
 }: AndroidGlassSurfaceProps) {
-  const { themeAppearance } = useAppearancePreferences();
+  const { themeAppearance, themeId } = useAppearancePreferences();
   const isDark = themeAppearance === "dark";
+  const isCrimson = themeId === "rias-crimson";
   const contextTarget = use(AndroidBlurTargetContext);
   const blurTarget = blurTargetProp === undefined ? contextTarget : blurTargetProp;
   const hasLiveBlur = blurTarget !== null;
-  const palette = glassPalette(isDark, tone, hasLiveBlur);
+  const palette = glassPalette(isDark, tone, hasLiveBlur, isCrimson);
   const blurIntensity = intensity ?? (isDark ? 48 : 58);
 
   const sheenGradient: NonNullable<ViewStyle["backgroundImage"]> = [
@@ -118,10 +165,10 @@ export function AndroidGlassSurface({
       type: "linear-gradient",
       direction: "to bottom",
       colorStops: [
-        { color: `rgba(255, 255, 255, ${palette.sheenTop})`, positions: ["0%"] },
-        { color: `rgba(255, 255, 255, ${palette.sheenMid})`, positions: ["38%"] },
-        { color: "rgba(255, 255, 255, 0)", positions: ["76%"] },
-        { color: `rgba(255, 255, 255, ${palette.sheenBottom})`, positions: ["100%"] },
+        { color: `rgba(${palette.sheenColor}, ${palette.sheenTop})`, positions: ["0%"] },
+        { color: `rgba(${palette.sheenColor}, ${palette.sheenMid})`, positions: ["38%"] },
+        { color: `rgba(${palette.sheenColor}, 0)`, positions: ["76%"] },
+        { color: `rgba(${palette.sheenColor}, ${palette.sheenBottom})`, positions: ["100%"] },
       ],
     },
   ];

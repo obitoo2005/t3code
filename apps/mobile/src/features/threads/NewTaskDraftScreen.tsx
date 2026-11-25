@@ -55,6 +55,7 @@ import {
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
+import { RiasMascot } from "../../components/RiasMascot";
 import { threadContextsOutsideEnvironment } from "@t3tools/shared/composerContextReferences";
 
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
@@ -802,7 +803,8 @@ export function NewTaskDraftScreen(props: {
   const headingFirstLine = headingBreak < 0 ? headingBefore : headingBefore.slice(0, headingBreak);
   const headingLead = headingBreak < 0 ? "" : headingBefore.slice(headingBreak + 1);
   const hero = flow.isScratchDraft ? (
-    <View className="items-center gap-2 px-6" testID="new-task-hero">
+    <View className="items-center gap-3 px-6" testID="new-task-hero">
+      <RiasMascot size={128} showCaption />
       <Text className="text-center text-2xl font-t3-medium tracking-tight text-foreground">
         <T>What should we work on?</T>
       </Text>
@@ -821,7 +823,8 @@ export function NewTaskDraftScreen(props: {
       {shareUnavailableNotice}
     </View>
   ) : (
-    <View className="items-center gap-6 px-6" testID="new-task-hero">
+    <View className="items-center gap-5 px-6" testID="new-task-hero">
+      <RiasMascot size={128} showCaption />
       <View className="w-full items-center gap-1.5">
         <Text className="text-center text-2xl font-t3-medium tracking-tight text-foreground">
           {headingFirstLine}

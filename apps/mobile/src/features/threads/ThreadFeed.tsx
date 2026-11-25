@@ -1844,6 +1844,10 @@ function compactionLabel(
   return text.replace(/ (→|tokens)/g, "\u00A0$1").replace(/→ /g, "→\u00A0");
 }
 
+function isStoppedRunFoldLabel(label: string): boolean {
+  return /\b(stopped|interrupted|cancelled|canceled|failed)\b/i.test(label);
+}
+
 function formatRunFoldDisplayLabel(label: string): string {
   const trimmed = label.trim();
   if (/^(worked|continued)\s+for\s+/i.test(trimmed)) {
@@ -1851,6 +1855,12 @@ function formatRunFoldDisplayLabel(label: string): string {
   }
   if (/^(worked|continued)$/i.test(trimmed)) {
     return "";
+  }
+  if (/^you\s+stopped\s+after\s+/i.test(trimmed)) {
+    return `Stopped · ${trimmed.replace(/^you\s+stopped\s+after\s+/i, "")}`;
+  }
+  if (/^you\s+stopped\b/i.test(trimmed)) {
+    return "Stopped";
   }
   return trimmed;
 }
@@ -1881,7 +1891,7 @@ function RunFoldWorking(props: {
       className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2"
       style={{ minHeight: Math.max(TURN_FOLD_HEIGHT - 3.5, props.rowSizing.estimatedRowHeight) }}
     >
-      <AkenoWorkingIcon active tapCount={tapCount} size={34} />
+      <AkenoWorkingIcon state="working" tapCount={tapCount} size={36} />
       <Text
         key={props.rowSizing.textSizeKey}
         numberOfLines={1}
@@ -1897,6 +1907,7 @@ function RunFoldButton({
   entry,
   environmentId,
   threadId,
+  isFailed,
   onToggle,
   rowSizing,
   iconColor,
@@ -1904,6 +1915,7 @@ function RunFoldButton({
   entry: Extract<ThreadFeedEntry, { type: "run-fold" }>;
   environmentId: EnvironmentId;
   threadId: ThreadId;
+  isFailed?: boolean;
   onToggle: (runId: RunId) => void;
   rowSizing: ReturnType<typeof deriveThreadWorkLogSizing>;
   iconColor: ColorValue;
@@ -1940,6 +1952,7 @@ function RunFoldButton({
     else onToggle(entry.runId);
   };
   const displayLabel = formatRunFoldDisplayLabel(entry.label);
+  const isStopped = Boolean(isFailed) || isStoppedRunFoldLabel(entry.label);
 
   return (
     <View className="min-w-0 flex-1">
@@ -1952,7 +1965,7 @@ function RunFoldButton({
         className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2"
         style={{ minHeight: Math.max(TURN_FOLD_HEIGHT - 3.5, rowSizing.estimatedRowHeight) }}
       >
-        <AkenoWorkingIcon active={false} tapCount={tapCount} size={34} />
+        <AkenoWorkingIcon state={isStopped ? "stopped" : "done"} tapCount={tapCount} size={36} />
         {displayLabel || error ? (
           <Text
             key={rowSizing.textSizeKey}
@@ -2103,6 +2116,7 @@ function renderFeedEntry(
             entry={entry}
             environmentId={props.environmentId}
             threadId={props.threadId}
+            isFailed={props.failedRunIds.has(entry.runId)}
             onToggle={props.onToggleTurnFold}
             rowSizing={props.workRowSizing}
             iconColor={iconSubtleColor}

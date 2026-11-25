@@ -52,6 +52,7 @@ export function SegmentedControl<Value extends string | number>(
   );
   const isAndroidGlass = Platform.OS === "android";
   const isDark = colorScheme === "dark";
+  const isCrimson = themeId === "rias-crimson";
   const minHeight = props.size === "compact" ? 32 : isAndroidGlass ? 40 : 36;
 
   return (
@@ -63,14 +64,30 @@ export function SegmentedControl<Value extends string | number>(
           minHeight,
           backgroundColor: isAndroidGlass
             ? isDark
-              ? "rgba(24, 24, 30, 0.78)"
-              : "rgba(244, 244, 248, 0.88)"
+              ? isCrimson
+                ? "rgba(32, 16, 22, 0.82)"
+                : "rgba(24, 24, 30, 0.78)"
+              : isCrimson
+                ? "rgba(252, 238, 243, 0.90)"
+                : "rgba(244, 244, 248, 0.88)"
             : trackColor,
           ...(isAndroidGlass
             ? {
                 borderWidth: 1,
-                borderColor: isDark ? "rgba(255, 255, 255, 0.11)" : "rgba(0, 0, 0, 0.08)",
-                borderTopColor: isDark ? "rgba(255, 255, 255, 0.18)" : "rgba(255, 255, 255, 0.90)",
+                borderColor: isCrimson
+                  ? isDark
+                    ? "rgba(244, 63, 94, 0.24)"
+                    : "rgba(190, 18, 60, 0.16)"
+                  : isDark
+                    ? "rgba(255, 255, 255, 0.11)"
+                    : "rgba(0, 0, 0, 0.08)",
+                borderTopColor: isCrimson
+                  ? isDark
+                    ? "rgba(255, 136, 162, 0.36)"
+                    : "rgba(255, 255, 255, 0.92)"
+                  : isDark
+                    ? "rgba(255, 255, 255, 0.18)"
+                    : "rgba(255, 255, 255, 0.90)",
               }
             : null),
         }}
@@ -83,16 +100,28 @@ export function SegmentedControl<Value extends string | number>(
               {
                 backgroundColor: isAndroidGlass
                   ? isDark
-                    ? "rgba(255, 255, 255, 0.14)"
+                    ? isCrimson
+                      ? "rgba(225, 29, 72, 0.28)"
+                      : "rgba(255, 255, 255, 0.14)"
                     : "rgba(255, 255, 255, 0.96)"
                   : selectedColor,
                 ...(isAndroidGlass
                   ? {
                       borderWidth: 1,
-                      borderColor: isDark ? "rgba(255, 255, 255, 0.16)" : "rgba(0, 0, 0, 0.06)",
-                      borderTopColor: isDark
-                        ? "rgba(255, 255, 255, 0.28)"
-                        : "rgba(255, 255, 255, 1)",
+                      borderColor: isCrimson
+                        ? isDark
+                          ? "rgba(244, 63, 94, 0.36)"
+                          : "rgba(190, 18, 60, 0.16)"
+                        : isDark
+                          ? "rgba(255, 255, 255, 0.16)"
+                          : "rgba(0, 0, 0, 0.06)",
+                      borderTopColor: isCrimson
+                        ? isDark
+                          ? "rgba(255, 150, 174, 0.48)"
+                          : "rgba(255, 255, 255, 1)"
+                        : isDark
+                          ? "rgba(255, 255, 255, 0.28)"
+                          : "rgba(255, 255, 255, 1)",
                     }
                   : null),
               },

@@ -42,7 +42,9 @@ export function getMobileUniwindThemeName(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
 ): MobileUniwindThemeName {
-  return themeId === DEFAULT_MOBILE_THEME_ID || themeId === "material-you"
+  return themeId === DEFAULT_MOBILE_THEME_ID ||
+    themeId === "material-you" ||
+    themeId === "rias-crimson"
     ? appearance
     : `${themeId}-${appearance}`;
 }

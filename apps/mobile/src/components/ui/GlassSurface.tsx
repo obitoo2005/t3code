@@ -46,8 +46,9 @@ export function GlassSurface({
   style,
   ...props
 }: GlassSurfaceProps) {
-  const { themeAppearance } = useAppearancePreferences();
+  const { themeAppearance, themeId } = useAppearancePreferences();
   const isDarkMode = themeAppearance === "dark";
+  const isCrimson = themeId === "rias-crimson";
   const supportsGlass = Platform.OS === "ios" && isGlassEffectAPIAvailable();
   const hasShadow = chrome !== "none" && Platform.OS !== "android";
   const surfaceStyle: ViewStyle = {
@@ -88,16 +89,40 @@ export function GlassSurface({
     Platform.OS === "android" && chrome !== "none"
       ? {
           borderWidth: 1,
-          borderColor: isDarkMode ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.09)",
-          borderTopColor: isDarkMode ? "rgba(255, 255, 255, 0.28)" : "rgba(255, 255, 255, 0.94)",
-          borderBottomColor: isDarkMode ? "rgba(255, 255, 255, 0.07)" : "rgba(0, 0, 0, 0.11)",
+          borderColor: isCrimson
+            ? isDarkMode
+              ? "rgba(244, 63, 94, 0.24)"
+              : "rgba(190, 18, 60, 0.16)"
+            : isDarkMode
+              ? "rgba(255, 255, 255, 0.14)"
+              : "rgba(0, 0, 0, 0.09)",
+          borderTopColor: isCrimson
+            ? isDarkMode
+              ? "rgba(255, 136, 162, 0.40)"
+              : "rgba(255, 255, 255, 0.94)"
+            : isDarkMode
+              ? "rgba(255, 255, 255, 0.28)"
+              : "rgba(255, 255, 255, 0.94)",
+          borderBottomColor: isCrimson
+            ? isDarkMode
+              ? "rgba(225, 29, 72, 0.14)"
+              : "rgba(190, 18, 60, 0.18)"
+            : isDarkMode
+              ? "rgba(255, 255, 255, 0.07)"
+              : "rgba(0, 0, 0, 0.11)",
           boxShadow: [
             {
               offsetX: 0,
               offsetY: 10,
               blurRadius: 28,
               spreadDistance: -4,
-              color: isDarkMode ? "rgba(0, 0, 0, 0.50)" : "rgba(0, 0, 0, 0.14)",
+              color: isCrimson
+                ? isDarkMode
+                  ? "rgba(190, 18, 60, 0.22)"
+                  : "rgba(190, 18, 60, 0.12)"
+                : isDarkMode
+                  ? "rgba(0, 0, 0, 0.50)"
+                  : "rgba(0, 0, 0, 0.14)",
             },
           ],
         }

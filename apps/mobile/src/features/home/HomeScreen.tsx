@@ -1,8 +1,23 @@
 import { useGT, useMessages } from "gt-react-native";
+import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
+import Animated, {
+  Easing,
+  ReduceMotion,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 
 import { useContentTopInset } from "../../components/ui/useBarInset";
 import { usePaneRole } from "../../components/ui/Pane";
 import { ScreenContent } from "../../components/ui/ScreenContent";
+import { RefreshControl } from "../../components/ui/RefreshControl";
+import { AppText as Text } from "../../components/ui/AppText";
+import { RIAS_IDLE_MASCOT_SOURCE } from "../../components/RiasMascot";
+import { useAppActive, useReduceMotionEnabled } from "../../lib/appState";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useActiveNewTask } from "../../state/active-new-task";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
@@ -126,6 +141,7 @@ interface HomeScreenProps {
   readonly onProjectChange: (projectKey: string | null) => void;
   readonly onAddConnection: () => void;
   readonly onOpenSettings: () => void;
+  readonly onRefresh?: () => Promise<void>;
   readonly onStartNewTask: () => void;
   readonly onSelectThread: (thread: EnvironmentThreadShell) => void;
   readonly onArchiveThread: (thread: EnvironmentThreadShell) => void;
@@ -163,6 +179,72 @@ const THREAD_LIST_V2_DRAW_DISTANCE = 1_000;
 
 function HomeTopContentSpacer() {
   return <View className="h-4" />;
+}
+
+const PEEK_SPRING = {
+  damping: 18,
+  stiffness: 260,
+  mass: 0.72,
+  reduceMotion: ReduceMotion.System,
+};
+
+function HomePeekingRiasRefreshHeader(props: { readonly phase: "idle" | "syncing" | "done" }) {
+  const gt = useGT();
+  const appActive = useAppActive();
+  const reducedMotion = useReduceMotionEnabled();
+  const visible = props.phase !== "idle";
+  const reveal = useSharedValue(0);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated reveal of peeking Rias mascot during pull-to-refresh
+  useEffect(() => {
+    reveal.set(
+      visible
+        ? withSpring(1, PEEK_SPRING)
+        : withTiming(0, {
+            duration: 210,
+            easing: Easing.inOut(Easing.cubic),
+            reduceMotion: ReduceMotion.System,
+          }),
+    );
+  }, [visible, reveal]);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    height: reveal.value * 74,
+    opacity: reveal.value,
+    overflow: "hidden",
+  }));
+
+  const mascotStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: (1 - reveal.value) * 30 },
+      { scale: 0.84 + reveal.value * 0.16 },
+    ],
+  }));
+
+  return (
+    <Animated.View
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      style={containerStyle}
+    >
+      <View className="h-[74px] flex-row items-end justify-center gap-3 px-4 pb-1">
+        <Animated.View style={mascotStyle}>
+          <Image
+            source={RIAS_IDLE_MASCOT_SOURCE}
+            autoplay={visible && appActive && !reducedMotion}
+            accessibilityIgnoresInvertColors
+            contentFit="contain"
+            style={{ width: 64, height: 64 }}
+          />
+        </Animated.View>
+        <View className="mb-3 rounded-full border border-border-subtle bg-grouped-card px-3 py-1">
+          <Text textRole="caption" className="font-t3-medium text-foreground-muted">
+            {props.phase === "done" ? gt("All synced ✨") : gt("Syncing sessions…")}
+          </Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
 }
 
 function HomeScrollView(props: ComponentProps<typeof ScrollView>) {
@@ -213,6 +295,34 @@ export function HomeScreen(props: HomeScreenProps) {
   const homeScrollGesture = useNativeGesture();
   const insets = useSafeAreaInsets();
   const contentTopInset = useContentTopInset();
+  const { themeAppearance, themeId } = useAppearancePreferences();
+  const [refreshPhase, setRefreshPhase] = useState<"idle" | "syncing" | "done">("idle");
+  const refreshTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears pull-to-refresh animation timers on unmount
+  useEffect(() => {
+    return () => {
+      for (const timer of refreshTimersRef.current) clearTimeout(timer);
+      refreshTimersRef.current = [];
+    };
+  }, []);
+  const handlePullToRefresh = () => {
+    if (refreshPhase !== "idle") return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setRefreshPhase("syncing");
+    const startedAt = Date.now();
+    void Promise.resolve(props.onRefresh?.()).finally(() => {
+      const elapsed = Date.now() - startedAt;
+      const remaining = Math.max(0, 750 - elapsed);
+      const doneTimer = setTimeout(() => {
+        setRefreshPhase("done");
+        const hideTimer = setTimeout(() => {
+          setRefreshPhase("idle");
+        }, 420);
+        refreshTimersRef.current.push(hideTimer);
+      }, remaining);
+      refreshTimersRef.current.push(doneTimer);
+    });
+  };
   const emptyTopInset = useWorkspaceListEmptyTopInset();
   const { fabClearance } = useAndroidControlSizing();
   const screenMetrics = useNativeLayoutMetrics();
@@ -675,7 +785,13 @@ export function HomeScreen(props: HomeScreenProps) {
     );
   }
 
-  const listHeader = Platform.OS === "ios" ? undefined : <HomeTopContentSpacer />;
+  const listHeader =
+    Platform.OS === "ios" ? undefined : (
+      <>
+        <HomePeekingRiasRefreshHeader phase={refreshPhase} />
+        <HomeTopContentSpacer />
+      </>
+    );
 
   const v2ListHeader = (
     <>
@@ -804,6 +920,23 @@ export function HomeScreen(props: HomeScreenProps) {
                   ) : null
                 }
                 ListEmptyComponent={v2ListEmpty}
+                refreshControl={
+                  Platform.OS === "android" ? (
+                    <RefreshControl
+                      refreshing={refreshPhase === "syncing"}
+                      onRefresh={handlePullToRefresh}
+                      progressViewOffset={contentTopInset + 8}
+                      colors={[
+                        themeId === "rias-crimson" || themeAppearance === "dark"
+                          ? "#F43F5E"
+                          : "#E11D48",
+                      ]}
+                      progressBackgroundColor={
+                        themeAppearance === "dark" ? "#1c1519" : "#ffffff"
+                      }
+                    />
+                  ) : undefined
+                }
                 style={{ flex: 1 }}
                 automaticallyAdjustsScrollIndicatorInsets={Platform.OS === "ios"}
                 contentInsetAdjustmentBehavior="never"

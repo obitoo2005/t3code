@@ -16,8 +16,12 @@ import {
 } from "@t3tools/shared/themePreview";
 
 export const DEFAULT_MOBILE_THEME_ID = MOBILE_DEFAULT_THEME_ID;
-export const MOBILE_THEME_IDS = [...SHARED_MOBILE_THEME_IDS, "material-you"] as const;
-export type MobileThemeId = SharedMobileThemeId | "material-you";
+export const MOBILE_THEME_IDS = [
+  ...SHARED_MOBILE_THEME_IDS,
+  "rias-crimson",
+  "material-you",
+] as const;
+export type MobileThemeId = SharedMobileThemeId | "rias-crimson" | "material-you";
 export type MobileThemeAppearance = ThemeAppearance;
 export type MobileThemeMode = MobileThemeAppearance | "system";
 export type MobileThemeIds = Readonly<Record<MobileThemeAppearance, MobileThemeId>>;
@@ -27,9 +31,94 @@ export const MOBILE_THEME_OPTIONS: ReadonlyArray<{
   readonly label: string;
 }> = [
   { id: DEFAULT_MOBILE_THEME_ID, label: "Rias Code" },
+  { id: "rias-crimson", label: "Rias Crimson" },
   { id: "material-you", label: "Material You" },
   ...BUILT_IN_THEMES.map((theme) => ({ id: theme.id as MobileThemeId, label: theme.label })),
 ];
+
+const RIAS_CRIMSON_DARK_THEME_COLORS: ThemeColors = {
+  ...T3_CODE_DARK_THEME_COLORS,
+  canvas: "#0a0a0a",
+  sidebar: "#0e0a0c",
+  chrome: "#120d0f",
+  toolbar: "#130e10",
+  surface: "#161013",
+  surfaceRaised: "#1f161a",
+  surfaceOverlay: "#1d1519",
+  muted: "#20161b",
+  secondary: "#291c22",
+  secondaryForeground: "#fcecef",
+  sidebarRowHover: "#21171c",
+  sidebarRowActive: "#311a23",
+  sidebarControlSurface: "#1c1317",
+  toolbarControl: "#22181d",
+  toolbarControlHover: "#2b1e24",
+  border: "#442632",
+  toolbarBorder: "#3c222c",
+  sidebarBorder: "#361e28",
+  input: "#472834",
+  accent: "#f43f5e",
+  accentForeground: "#ffffff",
+  accentSurface: "#3a1421",
+  accentSurfaceForeground: "#ffd6e0",
+  messageAction: "#be123c",
+  messageActionForeground: "#ffffff",
+  messageSurface: "#2e141e",
+  messageForeground: "#fff2f5",
+  focus: "#f43f5e",
+  text: "#fafafa",
+  textMuted: "#d6c2c8",
+  mutedForeground: "#baa2aa",
+  sidebarForeground: "#fafafa",
+  sidebarMutedForeground: "#baa2aa",
+  toolbarForeground: "#fafafa",
+  placeholder: "#b0969e",
+  iconMuted: "#c4aab2",
+  codeBackground: "#181115",
+  codeForeground: "#fce7ec",
+};
+
+const RIAS_CRIMSON_LIGHT_THEME_COLORS: ThemeColors = {
+  ...T3_CODE_LIGHT_THEME_COLORS,
+  canvas: "#fffafb",
+  sidebar: "#faf1f4",
+  chrome: "#fbf4f6",
+  toolbar: "#fbf4f6",
+  surface: "#ffffff",
+  surfaceRaised: "#fdf5f7",
+  surfaceOverlay: "#ffffff",
+  muted: "#f4e5ea",
+  secondary: "#eedce2",
+  secondaryForeground: "#271118",
+  sidebarRowHover: "#f3e4e9",
+  sidebarRowActive: "#ead2da",
+  sidebarControlSurface: "#f5e8ec",
+  toolbarControl: "#f4e6eb",
+  toolbarControlHover: "#eddbe1",
+  border: "#e2c6cf",
+  toolbarBorder: "#e6cdd5",
+  sidebarBorder: "#e8d1d8",
+  input: "#dfbfc9",
+  accent: "#e11d48",
+  accentForeground: "#ffffff",
+  accentSurface: "#fde4eb",
+  accentSurfaceForeground: "#881337",
+  messageAction: "#be123c",
+  messageActionForeground: "#ffffff",
+  messageSurface: "#fbe6ed",
+  messageForeground: "#2b0e18",
+  focus: "#e11d48",
+  text: "#1c0f14",
+  textMuted: "#5c3d47",
+  mutedForeground: "#61414b",
+  sidebarForeground: "#1c0f14",
+  sidebarMutedForeground: "#61414b",
+  toolbarForeground: "#1c0f14",
+  placeholder: "#694752",
+  iconMuted: "#6b4853",
+  codeBackground: "#f7ebef",
+  codeForeground: "#2c1019",
+};
 
 export type MobileThemeVariable = keyof ReturnType<typeof createMobileThemeVariables>;
 export type MobileThemeVariables = Readonly<Record<MobileThemeVariable, string>>;
@@ -449,9 +538,14 @@ export function createMobileThemeVariables(
 }
 
 export function getMobileThemeColors(
-  themeId: SharedMobileThemeId,
+  themeId: SharedMobileThemeId | "rias-crimson",
   appearance: MobileThemeAppearance,
 ): ThemeColors {
+  if (themeId === "rias-crimson") {
+    return appearance === "dark"
+      ? RIAS_CRIMSON_DARK_THEME_COLORS
+      : RIAS_CRIMSON_LIGHT_THEME_COLORS;
+  }
   if (themeId === DEFAULT_MOBILE_THEME_ID) {
     return appearance === "dark" ? T3_CODE_DARK_THEME_COLORS : T3_CODE_LIGHT_THEME_COLORS;
   }
@@ -460,7 +554,7 @@ export function getMobileThemeColors(
 }
 
 export function getMobileThemeVariables(
-  themeId: SharedMobileThemeId,
+  themeId: SharedMobileThemeId | "rias-crimson",
   appearance: MobileThemeAppearance,
   overrides: Partial<MobileThemeVariables> | null = null,
 ): MobileThemeVariables {
@@ -506,6 +600,11 @@ export function getMobileThemePreviewColors(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
 ): ThemePreviewColors {
+  if (themeId === "rias-crimson") {
+    return appearance === "dark"
+      ? { canvas: "#0a0a0a", accent: "#f43f5e", messageAction: "#be123c" }
+      : { canvas: "#fffafb", accent: "#f43f5e", messageAction: "#be123c" };
+  }
   if (themeId === DEFAULT_MOBILE_THEME_ID || themeId === "material-you")
     return STANDARD_THEME_PREVIEW_COLORS[appearance];
   const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? T3_CHAT_THEME;

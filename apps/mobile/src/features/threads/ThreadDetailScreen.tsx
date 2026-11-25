@@ -160,6 +160,7 @@ import { ThreadBrowserFloat } from "../browser/ThreadBrowserFloat";
 import { useThreadServerBrowserTabs } from "../../state/preview";
 import type { QueuedThreadMessage } from "../../state/thread-outbox-model";
 import { scopedThreadKey } from "../../lib/scopedEntities";
+import { playUiSound } from "../../lib/uiSoundFx";
 import {
   finishThreadMessageJump,
   pendingThreadMessageJump,
@@ -429,6 +430,20 @@ function ThreadDetailBody(
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
   const deviceType = useDeviceType();
   const workspace = useWorkspaceTabs();
+  const prevActiveWorkStartedAtRef = useRef(props.activeWorkStartedAt);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- plays completion chime when an active turn settles in view
+  useEffect(() => {
+    const previous = prevActiveWorkStartedAtRef.current;
+    prevActiveWorkStartedAtRef.current = props.activeWorkStartedAt;
+    if (
+      previous !== null &&
+      props.activeWorkStartedAt === null &&
+      props.activityRun?.status !== "interrupted" &&
+      props.activityRun?.status !== "cancelled"
+    ) {
+      playUiSound("done");
+    }
+  }, [props.activeWorkStartedAt, props.activityRun?.status]);
   const sidebarSearchActive =
     deviceType === "duo-unfolded" &&
     workspace?.state.tabs[workspace.state.selectedTab].searchMode === "active";
