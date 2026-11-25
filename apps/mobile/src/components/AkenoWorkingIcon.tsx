@@ -18,7 +18,7 @@ import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
 export type AkenoIconState = "working" | "done" | "stopped";
 
 const AKENO_SOURCES: Readonly<Record<AkenoIconState, ImageSource>> = {
-  working: require("../../assets/akeno-working.webp"),
+  working: require("../../assets/akeno-lightning.webp"),
   done: require("../../assets/akeno-working.png"),
   stopped: require("../../assets/akeno-stopped.png"),
 };
