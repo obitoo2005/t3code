@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
 
-export type AndroidGlassTone = "chrome" | "elevated" | "composer";
+export type AndroidGlassTone = "chrome" | "elevated" | "composer" | "menu";
 
 export interface AndroidGlassSurfaceProps extends ViewProps {
   readonly children?: ReactNode;

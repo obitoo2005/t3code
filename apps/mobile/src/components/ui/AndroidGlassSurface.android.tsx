@@ -20,7 +20,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useAppearancePreferences } from "../../features/settings/appearance/AppearancePreferencesProvider";
 import { AndroidBlurTargetContext } from "./AndroidBlurTargetContext";
 
-export type AndroidGlassTone = "chrome" | "elevated" | "composer";
+export type AndroidGlassTone = "chrome" | "elevated" | "composer" | "menu";
 
 export interface AndroidGlassSurfaceProps extends ViewProps {
   readonly children?: ReactNode;
@@ -41,42 +41,50 @@ const SPRING_CONFIG = {
 function glassPalette(isDark: boolean, tone: AndroidGlassTone, hasLiveBlur: boolean) {
   if (isDark) {
     const tint =
-      tone === "composer"
+      tone === "menu"
         ? hasLiveBlur
-          ? "rgba(24, 24, 28, 0.64)"
-          : "rgba(24, 24, 28, 0.90)"
-        : tone === "elevated"
+          ? "rgba(22, 22, 28, 0.74)"
+          : "rgba(23, 23, 29, 0.94)"
+        : tone === "composer"
           ? hasLiveBlur
-            ? "rgba(30, 30, 36, 0.56)"
-            : "rgba(28, 28, 33, 0.88)"
-          : hasLiveBlur
-            ? "rgba(26, 26, 31, 0.54)"
-            : "rgba(25, 25, 30, 0.88)";
+            ? "rgba(24, 24, 28, 0.64)"
+            : "rgba(24, 24, 28, 0.90)"
+          : tone === "elevated"
+            ? hasLiveBlur
+              ? "rgba(30, 30, 36, 0.56)"
+              : "rgba(28, 28, 33, 0.88)"
+            : hasLiveBlur
+              ? "rgba(26, 26, 31, 0.54)"
+              : "rgba(25, 25, 30, 0.88)";
     return {
       tint,
       border: "rgba(255, 255, 255, 0.14)",
       borderTop: "rgba(255, 255, 255, 0.28)",
-      borderBottom: "rgba(255, 255, 255, 0.07)",
-      sheenTop: 0.14,
-      sheenMid: 0.015,
+      borderBottom: tone === "menu" ? "rgba(255, 255, 255, 0.08)" : "rgba(255, 255, 255, 0.07)",
+      sheenTop: tone === "menu" ? 0.12 : 0.14,
+      sheenMid: tone === "menu" ? 0.018 : 0.015,
       sheenBottom: 0.045,
       sheenColor: "#ffffff",
     };
   }
   const tint =
-    tone === "composer"
+    tone === "menu"
       ? hasLiveBlur
-        ? "rgba(255, 255, 255, 0.76)"
-        : "rgba(248, 248, 250, 0.94)"
-      : hasLiveBlur
-        ? "rgba(255, 255, 255, 0.68)"
-        : "rgba(252, 252, 254, 0.92)";
+        ? "rgba(252, 252, 255, 0.80)"
+        : "rgba(250, 250, 253, 0.96)"
+      : tone === "composer"
+        ? hasLiveBlur
+          ? "rgba(255, 255, 255, 0.76)"
+          : "rgba(248, 248, 250, 0.94)"
+        : hasLiveBlur
+          ? "rgba(255, 255, 255, 0.68)"
+          : "rgba(252, 252, 254, 0.92)";
   return {
     tint,
     border: "rgba(0, 0, 0, 0.09)",
     borderTop: "rgba(255, 255, 255, 0.95)",
     borderBottom: "rgba(0, 0, 0, 0.11)",
-    sheenTop: 0.52,
+    sheenTop: tone === "menu" ? 0.42 : 0.52,
     sheenMid: 0.08,
     sheenBottom: 0.2,
     sheenColor: "#ffffff",
@@ -132,7 +140,7 @@ export function AndroidGlassSurface({
           blurReductionFactor={4}
           intensity={blurIntensity}
           tint={isDark ? "systemChromeMaterialDark" : "systemChromeMaterialLight"}
-          style={StyleSheet.absoluteFill}
+          style={[StyleSheet.absoluteFill, { borderRadius: radius }]}
         />
       ) : null}
       {hasLiveBlur ? (
