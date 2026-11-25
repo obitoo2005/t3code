@@ -19,9 +19,10 @@ export const DEFAULT_MOBILE_THEME_ID = MOBILE_DEFAULT_THEME_ID;
 export const MOBILE_THEME_IDS = [
   ...SHARED_MOBILE_THEME_IDS,
   "rias-crimson",
+  "akeno-violet",
   "material-you",
 ] as const;
-export type MobileThemeId = SharedMobileThemeId | "rias-crimson" | "material-you";
+export type MobileThemeId = SharedMobileThemeId | "rias-crimson" | "akeno-violet" | "material-you";
 export type MobileThemeAppearance = ThemeAppearance;
 export type MobileThemeMode = MobileThemeAppearance | "system";
 export type MobileThemeIds = Readonly<Record<MobileThemeAppearance, MobileThemeId>>;
@@ -32,6 +33,7 @@ export const MOBILE_THEME_OPTIONS: ReadonlyArray<{
 }> = [
   { id: DEFAULT_MOBILE_THEME_ID, label: "Rias Code" },
   { id: "rias-crimson", label: "Rias Crimson" },
+  { id: "akeno-violet", label: "Akeno Violet" },
   { id: "material-you", label: "Material You" },
   ...BUILT_IN_THEMES.map((theme) => ({ id: theme.id as MobileThemeId, label: theme.label })),
 ];
@@ -118,6 +120,90 @@ const RIAS_CRIMSON_LIGHT_THEME_COLORS: ThemeColors = {
   iconMuted: "#6b4853",
   codeBackground: "#f7ebef",
   codeForeground: "#2c1019",
+};
+
+const AKENO_VIOLET_DARK_THEME_COLORS: ThemeColors = {
+  ...T3_CODE_DARK_THEME_COLORS,
+  canvas: "#0a0a0a",
+  sidebar: "#0d0a12",
+  chrome: "#110d17",
+  toolbar: "#120e18",
+  surface: "#15101c",
+  surfaceRaised: "#1e1728",
+  surfaceOverlay: "#1c1526",
+  muted: "#20172b",
+  secondary: "#281e36",
+  secondaryForeground: "#f5efff",
+  sidebarRowHover: "#21182c",
+  sidebarRowActive: "#2f1f42",
+  sidebarControlSurface: "#1b1424",
+  toolbarControl: "#22192e",
+  toolbarControlHover: "#2b203a",
+  border: "#3f2b57",
+  toolbarBorder: "#38264d",
+  sidebarBorder: "#322245",
+  input: "#442f5e",
+  accent: "#a855f7",
+  accentForeground: "#ffffff",
+  accentSurface: "#32184d",
+  accentSurfaceForeground: "#ebd8ff",
+  messageAction: "#7c3aed",
+  messageActionForeground: "#ffffff",
+  messageSurface: "#271738",
+  messageForeground: "#f6f0ff",
+  focus: "#a855f7",
+  text: "#fafafa",
+  textMuted: "#d0c4de",
+  mutedForeground: "#b2a3c4",
+  sidebarForeground: "#fafafa",
+  sidebarMutedForeground: "#b2a3c4",
+  toolbarForeground: "#fafafa",
+  placeholder: "#a898bc",
+  iconMuted: "#bfb0d1",
+  codeBackground: "#16111f",
+  codeForeground: "#f2e9ff",
+};
+
+const AKENO_VIOLET_LIGHT_THEME_COLORS: ThemeColors = {
+  ...T3_CODE_LIGHT_THEME_COLORS,
+  canvas: "#fcfaff",
+  sidebar: "#f5f0fc",
+  chrome: "#f7f2fd",
+  toolbar: "#f7f2fd",
+  surface: "#ffffff",
+  surfaceRaised: "#faf6ff",
+  surfaceOverlay: "#ffffff",
+  muted: "#eee5f9",
+  secondary: "#e5d8f5",
+  secondaryForeground: "#201233",
+  sidebarRowHover: "#ede4f8",
+  sidebarRowActive: "#e0d0f4",
+  sidebarControlSurface: "#f0e8fa",
+  toolbarControl: "#efe6fa",
+  toolbarControlHover: "#e6d9f6",
+  border: "#d5c3eb",
+  toolbarBorder: "#dccceb",
+  sidebarBorder: "#dfd0f0",
+  input: "#ceb9e8",
+  accent: "#9333ea",
+  accentForeground: "#ffffff",
+  accentSurface: "#f2e6ff",
+  accentSurfaceForeground: "#581c87",
+  messageAction: "#7c3aed",
+  messageActionForeground: "#ffffff",
+  messageSurface: "#f1e8fc",
+  messageForeground: "#211036",
+  focus: "#9333ea",
+  text: "#181024",
+  textMuted: "#503f66",
+  mutedForeground: "#55436b",
+  sidebarForeground: "#181024",
+  sidebarMutedForeground: "#55436b",
+  toolbarForeground: "#181024",
+  placeholder: "#5e4b75",
+  iconMuted: "#614e78",
+  codeBackground: "#f3ecfb",
+  codeForeground: "#24123b",
 };
 
 export type MobileThemeVariable = keyof ReturnType<typeof createMobileThemeVariables>;
@@ -538,13 +624,18 @@ export function createMobileThemeVariables(
 }
 
 export function getMobileThemeColors(
-  themeId: SharedMobileThemeId | "rias-crimson",
+  themeId: SharedMobileThemeId | "rias-crimson" | "akeno-violet",
   appearance: MobileThemeAppearance,
 ): ThemeColors {
   if (themeId === "rias-crimson") {
     return appearance === "dark"
       ? RIAS_CRIMSON_DARK_THEME_COLORS
       : RIAS_CRIMSON_LIGHT_THEME_COLORS;
+  }
+  if (themeId === "akeno-violet") {
+    return appearance === "dark"
+      ? AKENO_VIOLET_DARK_THEME_COLORS
+      : AKENO_VIOLET_LIGHT_THEME_COLORS;
   }
   if (themeId === DEFAULT_MOBILE_THEME_ID) {
     return appearance === "dark" ? T3_CODE_DARK_THEME_COLORS : T3_CODE_LIGHT_THEME_COLORS;
@@ -554,7 +645,7 @@ export function getMobileThemeColors(
 }
 
 export function getMobileThemeVariables(
-  themeId: SharedMobileThemeId | "rias-crimson",
+  themeId: SharedMobileThemeId | "rias-crimson" | "akeno-violet",
   appearance: MobileThemeAppearance,
   overrides: Partial<MobileThemeVariables> | null = null,
 ): MobileThemeVariables {
@@ -604,6 +695,11 @@ export function getMobileThemePreviewColors(
     return appearance === "dark"
       ? { canvas: "#0a0a0a", accent: "#f43f5e", messageAction: "#be123c" }
       : { canvas: "#fffafb", accent: "#f43f5e", messageAction: "#be123c" };
+  }
+  if (themeId === "akeno-violet") {
+    return appearance === "dark"
+      ? { canvas: "#0a0a0a", accent: "#a855f7", messageAction: "#7c3aed" }
+      : { canvas: "#fcfaff", accent: "#9333ea", messageAction: "#7c3aed" };
   }
   if (themeId === DEFAULT_MOBILE_THEME_ID || themeId === "material-you")
     return STANDARD_THEME_PREVIEW_COLORS[appearance];

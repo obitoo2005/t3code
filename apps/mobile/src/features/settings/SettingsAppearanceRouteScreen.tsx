@@ -4,6 +4,8 @@ import { AndroidNavigationAppearanceSection } from "./appearance/sections/Androi
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { View } from "react-native";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
@@ -14,6 +16,29 @@ import { TextAppearanceSection } from "./appearance/sections/TextAppearanceSecti
 import { ThemeAppearanceSection } from "./appearance/sections/ThemeAppearanceSection";
 import { ToolCallsAppearanceSection } from "./appearance/sections/ToolCallsAppearanceSection";
 import { playUiSound } from "../../lib/uiSoundFx";
+
+function MascotAppearanceSection() {
+  const gt = useGT();
+  const { mascotPreference, setMascotPreference } = useAppearancePreferences();
+  return (
+    <SettingsSection title={gt("Companion mascot")}>
+      <View className="px-4 py-3">
+        <SegmentedControl
+          selected={mascotPreference}
+          onSelect={(value) => {
+            setMascotPreference(value);
+            playUiSound("shuffle");
+          }}
+          options={[
+            { value: "rias", label: gt("Rias") },
+            { value: "akeno", label: gt("Akeno") },
+            { value: "random", label: gt("Both") },
+          ]}
+        />
+      </View>
+    </SettingsSection>
+  );
+}
 
 function SoundFxAppearanceSection() {
   const gt = useGT();
@@ -50,6 +75,7 @@ export function SettingsAppearanceRouteScreen() {
         }}
       >
         <ThemeAppearanceSection />
+        <MascotAppearanceSection />
         <SoundFxAppearanceSection />
         {Platform.OS === "android" ? <AndroidNavigationAppearanceSection /> : null}
         <TextAppearanceSection />

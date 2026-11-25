@@ -155,6 +155,7 @@ export interface Preferences {
   readonly codeWordBreak?: boolean;
   readonly mathRenderingEnabled?: boolean;
   readonly soundFxEnabled?: boolean;
+  readonly mascotPreference?: "rias" | "akeno" | "random";
   /** Unset means on: crash reports are sent unless the user turns them off. */
   readonly crashReportsEnabled?: boolean;
   /** Unset means on: connection traces are sent unless the user turns them off. */
@@ -255,6 +256,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     codeWordBreak?: boolean;
     mathRenderingEnabled?: boolean;
     soundFxEnabled?: boolean;
+    mascotPreference?: "rias" | "akeno" | "random";
     crashReportsEnabled?: boolean;
     connectionTracesEnabled?: boolean;
     connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
@@ -357,6 +359,13 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     preferences.mathRenderingEnabled = parsed.mathRenderingEnabled;
   if (typeof parsed.soundFxEnabled === "boolean") {
     preferences.soundFxEnabled = parsed.soundFxEnabled;
+  }
+  if (
+    parsed.mascotPreference === "rias" ||
+    parsed.mascotPreference === "akeno" ||
+    parsed.mascotPreference === "random"
+  ) {
+    preferences.mascotPreference = parsed.mascotPreference;
   }
   if (typeof parsed.crashReportsEnabled === "boolean") {
     preferences.crashReportsEnabled = parsed.crashReportsEnabled;

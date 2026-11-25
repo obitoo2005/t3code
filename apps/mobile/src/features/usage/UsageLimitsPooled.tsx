@@ -20,13 +20,15 @@ import {
 } from "@t3tools/shared/usageLimitsCopy";
 import { msg, T, useGT, useMessages, Var } from "gt-react-native";
 import { Fragment, type ReactNode, useId, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 import { useNowMinuteMs } from "../../lib/clock";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { Defs, Path, Pattern, Rect, Svg } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AkenoMascotSprite, isLateNightHour, type AkenoMood } from "../../components/AkenoMascot";
+import { AndroidGlassSurface } from "../../components/ui/AndroidGlassSurface";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
@@ -471,11 +473,13 @@ export function UsageLimitsSection({
   failedLabels,
   selectedEnvironmentIds,
   wide = false,
+  onRefresh,
 }: {
   readonly now: number;
   readonly failedLabels: readonly string[];
   readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
   readonly wide?: boolean;
+  readonly onRefresh?: () => void;
 }) {
   const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   const selected =
@@ -489,8 +493,63 @@ export function UsageLimitsSection({
   const externalLinks = collectExternalUsageLinks(selected, m);
   const colors = useProviderColors();
   const gt = useGT();
+  const [heroAwake, setHeroAwake] = useState(false);
+
+  const allRemaining = pools.flatMap((pool) => pool.windows.map((window) => window.remainingPercent));
+  const lowestRemaining = allRemaining.length > 0 ? Math.min(...allRemaining) : null;
+  const averageRemaining =
+    allRemaining.length > 0
+      ? Math.round(allRemaining.reduce((sum, value) => sum + value, 0) / allRemaining.length)
+      : null;
+
+  const heroMood: AkenoMood =
+    failedLabels.length > 0 || (lowestRemaining !== null && lowestRemaining <= 25)
+      ? "sad"
+      : isLateNightHour() && !heroAwake
+        ? "sleepy"
+        : averageRemaining !== null && averageRemaining >= 75
+          ? "happy"
+          : "cute";
+  const heroTitle =
+    heroMood === "sad"
+      ? failedLabels.length > 0
+        ? gt("Couldn't reach everyone…")
+        : gt("Running a bit low…")
+      : heroMood === "sleepy"
+        ? gt("Late-night coding session…")
+        : heroMood === "happy"
+          ? gt("Plenty of quota left ♥")
+          : gt("Steady pace today ✦");
+  const heroSubtitle =
+    heroMood === "sad" && lowestRemaining !== null
+      ? gt("Lowest window is at {percent}% — tap Akeno to refresh", { percent: lowestRemaining })
+      : heroMood === "sleepy"
+        ? gt("Tap Akeno to wake her up & refresh limits")
+        : averageRemaining !== null
+          ? gt("Average {percent}% remaining · tap to refresh", { percent: averageRemaining })
+          : gt("Tap Akeno anytime to refresh your limits");
+
   return (
     <View className="gap-6">
+      {Platform.OS === "android" ? (
+        <AndroidGlassSurface radius={24} tone="elevated">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={gt("Refresh usage limits")}
+            onPress={() => {
+              setHeroAwake(true);
+              onRefresh?.();
+            }}
+            className="flex-row items-center gap-3.5 px-4 py-3 active:opacity-80"
+          >
+            <AkenoMascotSprite mood={heroMood} size={86} glow />
+            <View className="min-w-0 flex-1 gap-1">
+              <Text className="text-base font-t3-bold text-foreground">{heroTitle}</Text>
+              <Text className="text-xs leading-relaxed text-foreground-muted">{heroSubtitle}</Text>
+            </View>
+          </Pressable>
+        </AndroidGlassSurface>
+      ) : null}
       {pools.length === 0 &&
       notices.length === 0 &&
       failedLabels.length === 0 &&

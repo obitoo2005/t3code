@@ -51,6 +51,7 @@ export function AndroidHeaderIconButton(props: {
   const { themeAppearance, themeId } = useAppearancePreferences();
   const isDark = themeAppearance === "dark";
   const isCrimson = themeId === "rias-crimson";
+  const isViolet = themeId === "akeno-violet";
   const { scale } = useAndroidControlSizing();
   const pillHeight = Math.round(GLASS_PILL_HEIGHT * Math.min(scale, 1.15));
   const slotWidth = Math.round(GLASS_ICON_SLOT * Math.min(scale, 1.15));
@@ -64,13 +65,15 @@ export function AndroidHeaderIconButton(props: {
         ? "#6366F1"
         : isCrimson
           ? "#E11D48"
-          : isDark
-            ? "rgba(255, 255, 255, 0.90)"
-            : "#18181B";
+          : isViolet
+            ? "#9333EA"
+            : isDark
+              ? "rgba(255, 255, 255, 0.90)"
+              : "#18181B";
   const badgeFg =
     props.badgeTone === "warning"
       ? "#18181B"
-      : props.badgeTone === "accent" || isCrimson
+      : props.badgeTone === "accent" || isCrimson || isViolet
         ? "#FFFFFF"
         : isDark
           ? "#0A0A0A"

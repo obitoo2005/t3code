@@ -49,6 +49,7 @@ export function GlassSurface({
   const { themeAppearance, themeId } = useAppearancePreferences();
   const isDarkMode = themeAppearance === "dark";
   const isCrimson = themeId === "rias-crimson";
+  const isViolet = themeId === "akeno-violet";
   const supportsGlass = Platform.OS === "ios" && isGlassEffectAPIAvailable();
   const hasShadow = chrome !== "none" && Platform.OS !== "android";
   const surfaceStyle: ViewStyle = {
@@ -93,23 +94,35 @@ export function GlassSurface({
             ? isDarkMode
               ? "rgba(244, 63, 94, 0.24)"
               : "rgba(190, 18, 60, 0.16)"
-            : isDarkMode
-              ? "rgba(255, 255, 255, 0.14)"
-              : "rgba(0, 0, 0, 0.09)",
+            : isViolet
+              ? isDarkMode
+                ? "rgba(168, 85, 247, 0.25)"
+                : "rgba(124, 58, 237, 0.16)"
+              : isDarkMode
+                ? "rgba(255, 255, 255, 0.14)"
+                : "rgba(0, 0, 0, 0.09)",
           borderTopColor: isCrimson
             ? isDarkMode
               ? "rgba(255, 136, 162, 0.40)"
               : "rgba(255, 255, 255, 0.94)"
-            : isDarkMode
-              ? "rgba(255, 255, 255, 0.28)"
-              : "rgba(255, 255, 255, 0.94)",
+            : isViolet
+              ? isDarkMode
+                ? "rgba(208, 166, 255, 0.42)"
+                : "rgba(255, 255, 255, 0.94)"
+              : isDarkMode
+                ? "rgba(255, 255, 255, 0.28)"
+                : "rgba(255, 255, 255, 0.94)",
           borderBottomColor: isCrimson
             ? isDarkMode
               ? "rgba(225, 29, 72, 0.14)"
               : "rgba(190, 18, 60, 0.18)"
-            : isDarkMode
-              ? "rgba(255, 255, 255, 0.07)"
-              : "rgba(0, 0, 0, 0.11)",
+            : isViolet
+              ? isDarkMode
+                ? "rgba(147, 51, 234, 0.15)"
+                : "rgba(124, 58, 237, 0.18)"
+              : isDarkMode
+                ? "rgba(255, 255, 255, 0.07)"
+                : "rgba(0, 0, 0, 0.11)",
           boxShadow: [
             {
               offsetX: 0,
@@ -120,9 +133,13 @@ export function GlassSurface({
                 ? isDarkMode
                   ? "rgba(190, 18, 60, 0.22)"
                   : "rgba(190, 18, 60, 0.12)"
-                : isDarkMode
-                  ? "rgba(0, 0, 0, 0.50)"
-                  : "rgba(0, 0, 0, 0.14)",
+                : isViolet
+                  ? isDarkMode
+                    ? "rgba(124, 58, 237, 0.22)"
+                    : "rgba(124, 58, 237, 0.12)"
+                  : isDarkMode
+                    ? "rgba(0, 0, 0, 0.50)"
+                    : "rgba(0, 0, 0, 0.14)",
             },
           ],
         }

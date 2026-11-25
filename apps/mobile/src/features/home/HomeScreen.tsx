@@ -15,6 +15,7 @@ import { usePaneRole } from "../../components/ui/Pane";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { RefreshControl } from "../../components/ui/RefreshControl";
 import { AppText as Text } from "../../components/ui/AppText";
+import { AKENO_MOOD_SOURCES, isLateNightHour } from "../../components/AkenoMascot";
 import { RIAS_IDLE_MASCOT_SOURCE } from "../../components/RiasMascot";
 import { useAppActive, useReduceMotionEnabled } from "../../lib/appState";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -188,14 +189,28 @@ const PEEK_SPRING = {
   reduceMotion: ReduceMotion.System,
 };
 
-function HomePeekingRiasRefreshHeader(props: { readonly phase: "idle" | "syncing" | "done" }) {
+function HomePeekingRiasRefreshHeader(props: {
+  readonly phase: "idle" | "syncing" | "done";
+  readonly pullCount: number;
+}) {
   const gt = useGT();
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
+  const { mascotPreference } = useAppearancePreferences();
   const visible = props.phase !== "idle";
   const reveal = useSharedValue(0);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated reveal of peeking Rias mascot during pull-to-refresh
+  const useAkeno =
+    mascotPreference === "akeno" || (mascotPreference === "random" && props.pullCount % 2 === 1);
+  const mascotSource = useAkeno
+    ? props.phase === "done"
+      ? AKENO_MOOD_SOURCES.happy
+      : isLateNightHour()
+        ? AKENO_MOOD_SOURCES.sleepy
+        : AKENO_MOOD_SOURCES.cute
+    : RIAS_IDLE_MASCOT_SOURCE;
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated reveal of peeking companion mascot during pull-to-refresh
   useEffect(() => {
     reveal.set(
       visible
@@ -230,7 +245,7 @@ function HomePeekingRiasRefreshHeader(props: { readonly phase: "idle" | "syncing
       <View className="h-[74px] flex-row items-end justify-center gap-3 px-4 pb-1">
         <Animated.View style={mascotStyle}>
           <Image
-            source={RIAS_IDLE_MASCOT_SOURCE}
+            source={mascotSource}
             autoplay={visible && appActive && !reducedMotion}
             accessibilityIgnoresInvertColors
             contentFit="contain"
@@ -297,6 +312,7 @@ export function HomeScreen(props: HomeScreenProps) {
   const contentTopInset = useContentTopInset();
   const { themeAppearance, themeId } = useAppearancePreferences();
   const [refreshPhase, setRefreshPhase] = useState<"idle" | "syncing" | "done">("idle");
+  const [refreshPullCount, setRefreshPullCount] = useState(0);
   const refreshTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears pull-to-refresh animation timers on unmount
   useEffect(() => {
@@ -308,6 +324,7 @@ export function HomeScreen(props: HomeScreenProps) {
   const handlePullToRefresh = () => {
     if (refreshPhase !== "idle") return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setRefreshPullCount((count) => count + 1);
     setRefreshPhase("syncing");
     const startedAt = Date.now();
     void Promise.resolve(props.onRefresh?.()).finally(() => {
@@ -788,7 +805,7 @@ export function HomeScreen(props: HomeScreenProps) {
   const listHeader =
     Platform.OS === "ios" ? undefined : (
       <>
-        <HomePeekingRiasRefreshHeader phase={refreshPhase} />
+        <HomePeekingRiasRefreshHeader phase={refreshPhase} pullCount={refreshPullCount} />
         <HomeTopContentSpacer />
       </>
     );
@@ -927,9 +944,11 @@ export function HomeScreen(props: HomeScreenProps) {
                       onRefresh={handlePullToRefresh}
                       progressViewOffset={contentTopInset + 8}
                       colors={[
-                        themeId === "rias-crimson" || themeAppearance === "dark"
-                          ? "#F43F5E"
-                          : "#E11D48",
+                        themeId === "akeno-violet"
+                          ? "#A855F7"
+                          : themeId === "rias-crimson" || themeAppearance === "dark"
+                            ? "#F43F5E"
+                            : "#E11D48",
                       ]}
                       progressBackgroundColor={
                         themeAppearance === "dark" ? "#1c1519" : "#ffffff"

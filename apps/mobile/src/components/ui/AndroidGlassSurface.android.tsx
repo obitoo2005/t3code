@@ -42,10 +42,10 @@ function glassPalette(
   isDark: boolean,
   tone: AndroidGlassTone,
   hasLiveBlur: boolean,
-  isCrimson: boolean,
+  accentStyle: "default" | "crimson" | "violet",
 ) {
   if (isDark) {
-    if (isCrimson) {
+    if (accentStyle === "crimson") {
       const tint =
         tone === "menu"
           ? hasLiveBlur
@@ -68,6 +68,34 @@ function glassPalette(
         borderTop: "rgba(255, 136, 162, 0.42)",
         borderBottom: tone === "menu" ? "rgba(225, 29, 72, 0.14)" : "rgba(225, 29, 72, 0.12)",
         sheenColor: "255, 206, 220",
+        sheenTop: tone === "menu" ? 0.14 : 0.16,
+        sheenMid: tone === "menu" ? 0.025 : 0.022,
+        sheenBottom: 0.06,
+      };
+    }
+    if (accentStyle === "violet") {
+      const tint =
+        tone === "menu"
+          ? hasLiveBlur
+            ? "rgba(24, 16, 34, 0.76)"
+            : "rgba(22, 15, 31, 0.95)"
+          : tone === "composer"
+            ? hasLiveBlur
+              ? "rgba(26, 18, 36, 0.68)"
+              : "rgba(24, 16, 33, 0.92)"
+            : tone === "elevated"
+              ? hasLiveBlur
+                ? "rgba(32, 22, 44, 0.60)"
+                : "rgba(29, 20, 40, 0.90)"
+              : hasLiveBlur
+                ? "rgba(28, 19, 39, 0.58)"
+                : "rgba(25, 17, 35, 0.90)";
+      return {
+        tint,
+        border: "rgba(168, 85, 247, 0.25)",
+        borderTop: "rgba(208, 166, 255, 0.42)",
+        borderBottom: tone === "menu" ? "rgba(147, 51, 234, 0.15)" : "rgba(147, 51, 234, 0.13)",
+        sheenColor: "234, 212, 255",
         sheenTop: tone === "menu" ? 0.14 : 0.16,
         sheenMid: tone === "menu" ? 0.025 : 0.022,
         sheenBottom: 0.06,
@@ -100,34 +128,57 @@ function glassPalette(
       sheenBottom: 0.045,
     };
   }
-  const tint = isCrimson
-    ? tone === "menu"
-      ? hasLiveBlur
-        ? "rgba(255, 248, 250, 0.84)"
-        : "rgba(255, 246, 249, 0.97)"
-      : tone === "composer"
+  const tint =
+    accentStyle === "crimson"
+      ? tone === "menu"
         ? hasLiveBlur
-          ? "rgba(255, 249, 251, 0.80)"
-          : "rgba(253, 243, 246, 0.95)"
-        : hasLiveBlur
-          ? "rgba(255, 248, 250, 0.74)"
-          : "rgba(254, 245, 248, 0.94)"
-    : tone === "menu"
-      ? hasLiveBlur
-        ? "rgba(252, 252, 255, 0.80)"
-        : "rgba(250, 250, 253, 0.96)"
-      : tone === "composer"
-        ? hasLiveBlur
-          ? "rgba(255, 255, 255, 0.76)"
-          : "rgba(248, 248, 250, 0.94)"
-        : hasLiveBlur
-          ? "rgba(255, 255, 255, 0.68)"
-          : "rgba(252, 252, 254, 0.92)";
+          ? "rgba(255, 248, 250, 0.84)"
+          : "rgba(255, 246, 249, 0.97)"
+        : tone === "composer"
+          ? hasLiveBlur
+            ? "rgba(255, 249, 251, 0.80)"
+            : "rgba(253, 243, 246, 0.95)"
+          : hasLiveBlur
+            ? "rgba(255, 248, 250, 0.74)"
+            : "rgba(254, 245, 248, 0.94)"
+      : accentStyle === "violet"
+        ? tone === "menu"
+          ? hasLiveBlur
+            ? "rgba(250, 246, 255, 0.84)"
+            : "rgba(248, 243, 255, 0.97)"
+          : tone === "composer"
+            ? hasLiveBlur
+              ? "rgba(251, 248, 255, 0.80)"
+              : "rgba(246, 240, 254, 0.95)"
+            : hasLiveBlur
+              ? "rgba(250, 246, 255, 0.74)"
+              : "rgba(248, 243, 255, 0.94)"
+        : tone === "menu"
+          ? hasLiveBlur
+            ? "rgba(252, 252, 255, 0.80)"
+            : "rgba(250, 250, 253, 0.96)"
+          : tone === "composer"
+            ? hasLiveBlur
+              ? "rgba(255, 255, 255, 0.76)"
+              : "rgba(248, 248, 250, 0.94)"
+            : hasLiveBlur
+              ? "rgba(255, 255, 255, 0.68)"
+              : "rgba(252, 252, 254, 0.92)";
   return {
     tint,
-    border: isCrimson ? "rgba(190, 18, 60, 0.16)" : "rgba(0, 0, 0, 0.09)",
+    border:
+      accentStyle === "crimson"
+        ? "rgba(190, 18, 60, 0.16)"
+        : accentStyle === "violet"
+          ? "rgba(124, 58, 237, 0.16)"
+          : "rgba(0, 0, 0, 0.09)",
     borderTop: "rgba(255, 255, 255, 0.95)",
-    borderBottom: isCrimson ? "rgba(190, 18, 60, 0.18)" : "rgba(0, 0, 0, 0.11)",
+    borderBottom:
+      accentStyle === "crimson"
+        ? "rgba(190, 18, 60, 0.18)"
+        : accentStyle === "violet"
+          ? "rgba(124, 58, 237, 0.18)"
+          : "rgba(0, 0, 0, 0.11)",
     sheenColor: "255, 255, 255",
     sheenTop: tone === "menu" ? 0.42 : 0.52,
     sheenMid: 0.08,
@@ -153,11 +204,12 @@ export function AndroidGlassSurface({
 }: AndroidGlassSurfaceProps) {
   const { themeAppearance, themeId } = useAppearancePreferences();
   const isDark = themeAppearance === "dark";
-  const isCrimson = themeId === "rias-crimson";
+  const accentStyle =
+    themeId === "rias-crimson" ? "crimson" : themeId === "akeno-violet" ? "violet" : "default";
   const contextTarget = use(AndroidBlurTargetContext);
   const blurTarget = blurTargetProp === undefined ? contextTarget : blurTargetProp;
   const hasLiveBlur = blurTarget !== null;
-  const palette = glassPalette(isDark, tone, hasLiveBlur, isCrimson);
+  const palette = glassPalette(isDark, tone, hasLiveBlur, accentStyle);
   const blurIntensity = intensity ?? (isDark ? 48 : 58);
 
   const sheenGradient: NonNullable<ViewStyle["backgroundImage"]> = [

@@ -12,7 +12,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
+import { AKENO_MOOD_SOURCES, isLateNightHour, type AkenoMood } from "./AkenoMascot";
 import { AppText as Text } from "./ui/AppText";
 
 export const RIAS_IDLE_MASCOT_SOURCE = require("../../assets/rias-idle.webp");
@@ -25,6 +27,20 @@ const RIAS_CAPTIONS: readonly string[] = [
   "Crimson power, pure OLED ♥",
 ];
 
+const AKENO_DAY_MOODS: readonly { readonly mood: AkenoMood; readonly caption: string }[] = [
+  { mood: "cute", caption: "Ara ara~ what are we building? ✦" },
+  { mood: "happy", caption: "Yay! Let's ship something awesome ♥" },
+  { mood: "surprised", caption: "Oh! You tapped me! ✨" },
+  { mood: "cute", caption: "I'll cheer you on the whole way 💜" },
+];
+
+const AKENO_NIGHT_MOODS: readonly { readonly mood: AkenoMood; readonly caption: string }[] = [
+  { mood: "sleepy", caption: "Late-night coding… don't forget to rest 😴" },
+  { mood: "surprised", caption: "Ah—I'm awake! Let's code! ✨" },
+  { mood: "happy", caption: "Midnight shipping squad ♥" },
+  { mood: "cute", caption: "Tap again if you need a boost ✦" },
+];
+
 const BOUNCE_SPRING = {
   damping: 11,
   stiffness: 320,
@@ -32,9 +48,12 @@ const BOUNCE_SPRING = {
   reduceMotion: ReduceMotion.System,
 };
 
+let randomMascotToggle = 0;
+
 /**
- * Animated transparent Rias pixel-art mascot for New Thread & empty screens.
- * Winks with floating sparkles and bounces playfully with rotating captions on tap.
+ * Animated transparent Rias / Akeno companion mascot for New Thread & empty screens.
+ * Respects Settings → Appearance → Companion mascot (`Rias` / `Akeno` / `Both`),
+ * automatically shows sleepy Akeno late at night (11 PM–6 AM) until tapped awake!
  */
 export const RiasMascot = memo(function RiasMascot(props: {
   readonly size?: number;
@@ -43,9 +62,26 @@ export const RiasMascot = memo(function RiasMascot(props: {
   const size = props.size ?? 128;
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
-  const [captionIndex, setCaptionIndex] = useState(0);
+  const { mascotPreference } = useAppearancePreferences();
+  const [randomPick] = useState<"rias" | "akeno">(() => {
+    randomMascotToggle += 1;
+    return randomMascotToggle % 2 === 1 ? "akeno" : "rias";
+  });
+  const [lateNight] = useState(() => isLateNightHour());
+  const [tapStep, setTapStep] = useState(0);
   const scale = useSharedValue(1);
   const tilt = useSharedValue(0);
+
+  const activeCharacter: "rias" | "akeno" =
+    mascotPreference === "random" ? randomPick : mascotPreference;
+  const akenoSequence = lateNight ? AKENO_NIGHT_MOODS : AKENO_DAY_MOODS;
+  const akenoEntry = akenoSequence[tapStep % akenoSequence.length]!;
+  const source =
+    activeCharacter === "akeno" ? AKENO_MOOD_SOURCES[akenoEntry.mood] : RIAS_IDLE_MASCOT_SOURCE;
+  const caption =
+    activeCharacter === "akeno"
+      ? akenoEntry.caption
+      : RIAS_CAPTIONS[tapStep % RIAS_CAPTIONS.length]!;
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }, { rotate: `${tilt.value}deg` }],
@@ -53,9 +89,7 @@ export const RiasMascot = memo(function RiasMascot(props: {
 
   const handlePress = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (props.showCaption) {
-      setCaptionIndex((index) => (index + 1) % RIAS_CAPTIONS.length);
-    }
+    setTapStep((step) => step + 1);
     if (reducedMotion) return;
     scale.set(
       withSequence(
@@ -76,7 +110,7 @@ export const RiasMascot = memo(function RiasMascot(props: {
     <View className="items-center">
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Rias mascot"
+        accessibilityLabel={activeCharacter === "akeno" ? "Akeno mascot" : "Rias mascot"}
         onPress={handlePress}
         hitSlop={8}
         className="items-center justify-center"
@@ -99,20 +133,26 @@ export const RiasMascot = memo(function RiasMascot(props: {
               width: Math.round(size * 0.72),
               height: Math.round(size * 0.72),
               borderRadius: 999,
-              backgroundColor: "rgba(225, 29, 72, 0.14)",
+              backgroundColor:
+                activeCharacter === "akeno"
+                  ? "rgba(168, 85, 247, 0.14)"
+                  : "rgba(225, 29, 72, 0.14)",
               boxShadow: [
                 {
                   offsetX: 0,
                   offsetY: 4,
                   blurRadius: 28,
                   spreadDistance: 4,
-                  color: "rgba(225, 29, 72, 0.24)",
+                  color:
+                    activeCharacter === "akeno"
+                      ? "rgba(168, 85, 247, 0.25)"
+                      : "rgba(225, 29, 72, 0.24)",
                 },
               ],
             }}
           />
           <Image
-            source={RIAS_IDLE_MASCOT_SOURCE}
+            source={source}
             autoplay={appActive && !reducedMotion}
             accessibilityIgnoresInvertColors
             contentFit="contain"
@@ -125,7 +165,7 @@ export const RiasMascot = memo(function RiasMascot(props: {
           textRole="footnote"
           className="mt-1.5 text-center font-t3-medium text-foreground-muted"
         >
-          {RIAS_CAPTIONS[captionIndex]}
+          {caption}
         </Text>
       ) : null}
     </View>

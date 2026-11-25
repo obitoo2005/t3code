@@ -53,6 +53,7 @@ export function SegmentedControl<Value extends string | number>(
   const isAndroidGlass = Platform.OS === "android";
   const isDark = colorScheme === "dark";
   const isCrimson = themeId === "rias-crimson";
+  const isViolet = themeId === "akeno-violet";
   const minHeight = props.size === "compact" ? 32 : isAndroidGlass ? 40 : 36;
 
   return (
@@ -66,10 +67,14 @@ export function SegmentedControl<Value extends string | number>(
             ? isDark
               ? isCrimson
                 ? "rgba(32, 16, 22, 0.82)"
-                : "rgba(24, 24, 30, 0.78)"
+                : isViolet
+                  ? "rgba(26, 18, 36, 0.82)"
+                  : "rgba(24, 24, 30, 0.78)"
               : isCrimson
                 ? "rgba(252, 238, 243, 0.90)"
-                : "rgba(244, 244, 248, 0.88)"
+                : isViolet
+                  ? "rgba(245, 238, 253, 0.90)"
+                  : "rgba(244, 244, 248, 0.88)"
             : trackColor,
           ...(isAndroidGlass
             ? {
@@ -78,16 +83,24 @@ export function SegmentedControl<Value extends string | number>(
                   ? isDark
                     ? "rgba(244, 63, 94, 0.24)"
                     : "rgba(190, 18, 60, 0.16)"
-                  : isDark
-                    ? "rgba(255, 255, 255, 0.11)"
-                    : "rgba(0, 0, 0, 0.08)",
+                  : isViolet
+                    ? isDark
+                      ? "rgba(168, 85, 247, 0.25)"
+                      : "rgba(124, 58, 237, 0.16)"
+                    : isDark
+                      ? "rgba(255, 255, 255, 0.11)"
+                      : "rgba(0, 0, 0, 0.08)",
                 borderTopColor: isCrimson
                   ? isDark
                     ? "rgba(255, 136, 162, 0.36)"
                     : "rgba(255, 255, 255, 0.92)"
-                  : isDark
-                    ? "rgba(255, 255, 255, 0.18)"
-                    : "rgba(255, 255, 255, 0.90)",
+                  : isViolet
+                    ? isDark
+                      ? "rgba(208, 166, 255, 0.36)"
+                      : "rgba(255, 255, 255, 0.92)"
+                    : isDark
+                      ? "rgba(255, 255, 255, 0.18)"
+                      : "rgba(255, 255, 255, 0.90)",
               }
             : null),
         }}
@@ -102,7 +115,9 @@ export function SegmentedControl<Value extends string | number>(
                   ? isDark
                     ? isCrimson
                       ? "rgba(225, 29, 72, 0.28)"
-                      : "rgba(255, 255, 255, 0.14)"
+                      : isViolet
+                        ? "rgba(147, 51, 234, 0.30)"
+                        : "rgba(255, 255, 255, 0.14)"
                     : "rgba(255, 255, 255, 0.96)"
                   : selectedColor,
                 ...(isAndroidGlass
@@ -112,16 +127,24 @@ export function SegmentedControl<Value extends string | number>(
                         ? isDark
                           ? "rgba(244, 63, 94, 0.36)"
                           : "rgba(190, 18, 60, 0.16)"
-                        : isDark
-                          ? "rgba(255, 255, 255, 0.16)"
-                          : "rgba(0, 0, 0, 0.06)",
+                        : isViolet
+                          ? isDark
+                            ? "rgba(168, 85, 247, 0.38)"
+                            : "rgba(124, 58, 237, 0.16)"
+                          : isDark
+                            ? "rgba(255, 255, 255, 0.16)"
+                            : "rgba(0, 0, 0, 0.06)",
                       borderTopColor: isCrimson
                         ? isDark
                           ? "rgba(255, 150, 174, 0.48)"
                           : "rgba(255, 255, 255, 1)"
-                        : isDark
-                          ? "rgba(255, 255, 255, 0.28)"
-                          : "rgba(255, 255, 255, 1)",
+                        : isViolet
+                          ? isDark
+                            ? "rgba(216, 180, 254, 0.50)"
+                            : "rgba(255, 255, 255, 1)"
+                          : isDark
+                            ? "rgba(255, 255, 255, 0.28)"
+                            : "rgba(255, 255, 255, 1)",
                     }
                   : null),
               },

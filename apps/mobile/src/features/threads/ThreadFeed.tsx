@@ -1891,7 +1891,7 @@ function RunFoldWorking(props: {
       className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2"
       style={{ minHeight: Math.max(TURN_FOLD_HEIGHT - 3.5, props.rowSizing.estimatedRowHeight) }}
     >
-      <AkenoWorkingIcon state="working" tapCount={tapCount} size={36} />
+      <AkenoWorkingIcon state="working" tapCount={tapCount} size={38} />
       <Text
         key={props.rowSizing.textSizeKey}
         numberOfLines={1}
@@ -1952,7 +1952,11 @@ function RunFoldButton({
     else onToggle(entry.runId);
   };
   const displayLabel = formatRunFoldDisplayLabel(entry.label);
-  const isStopped = Boolean(isFailed) || isStoppedRunFoldLabel(entry.label);
+  const akenoState = isFailed
+    ? "failed"
+    : isStoppedRunFoldLabel(entry.label)
+      ? "stopped"
+      : "done";
 
   return (
     <View className="min-w-0 flex-1">
@@ -1965,7 +1969,7 @@ function RunFoldButton({
         className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2"
         style={{ minHeight: Math.max(TURN_FOLD_HEIGHT - 3.5, rowSizing.estimatedRowHeight) }}
       >
-        <AkenoWorkingIcon state={isStopped ? "stopped" : "done"} tapCount={tapCount} size={36} />
+        <AkenoWorkingIcon state={akenoState} tapCount={tapCount} size={38} />
         {displayLabel || error ? (
           <Text
             key={rowSizing.textSizeKey}

@@ -77,6 +77,8 @@ interface AppearancePreferencesContextValue {
   readonly setMathRenderingEnabled: (value: boolean) => void;
   readonly soundFxEnabled: boolean;
   readonly setSoundFxEnabled: (value: boolean) => void;
+  readonly mascotPreference: "rias" | "akeno" | "random";
+  readonly setMascotPreference: (value: "rias" | "akeno" | "random") => void;
 }
 
 const AppearancePreferencesContext = createContext<AppearancePreferencesContextValue | null>(null);
@@ -305,6 +307,10 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     setUiSoundFxEnabled(value);
     updatePreferences({ soundFxEnabled: value });
   };
+  const mascotPreference: "rias" | "akeno" | "random" =
+    storedPreferences?.mascotPreference ?? "random";
+  const setMascotPreference = (value: "rias" | "akeno" | "random") =>
+    updatePreferences({ mascotPreference: value });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- syncs persisted soundFxEnabled flag to imperative audio helper
   useEffect(() => {
     setUiSoundFxEnabled(soundFxEnabled);
@@ -336,6 +342,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setMathRenderingEnabled,
       soundFxEnabled,
       setSoundFxEnabled,
+      mascotPreference,
+      setMascotPreference,
     }),
     [
       appearance,
@@ -361,6 +369,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setMathRenderingEnabled,
       soundFxEnabled,
       setSoundFxEnabled,
+      mascotPreference,
+      setMascotPreference,
     ],
   );
 

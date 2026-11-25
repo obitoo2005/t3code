@@ -308,6 +308,7 @@ function UsageScreen(props: {
                   failedLabels={limits.failedLabels}
                   selectedEnvironmentIds={selectedEnvironmentIds}
                   wide={wide}
+                  onRefresh={() => void limits.refresh()}
                 />
               ) : (
                 <>

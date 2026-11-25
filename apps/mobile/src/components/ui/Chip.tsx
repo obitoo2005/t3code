@@ -28,6 +28,7 @@ export function Chip(props: {
   const { themeAppearance, themeId } = useAppearancePreferences();
   const isDark = (props.colorScheme ?? themeAppearance) === "dark";
   const isCrimson = themeId === "rias-crimson";
+  const isViolet = themeId === "akeno-violet";
   const isAndroidGlass = Platform.OS === "android";
   const small = props.size === "small";
   const layout = cn(
@@ -86,45 +87,65 @@ export function Chip(props: {
                   borderWidth: 1,
                   borderColor: isCrimson
                     ? "rgba(255, 120, 148, 0.36)"
-                    : isDark
-                      ? "rgba(255, 255, 255, 0.20)"
-                      : "rgba(0, 0, 0, 0.08)",
+                    : isViolet
+                      ? "rgba(208, 166, 255, 0.38)"
+                      : isDark
+                        ? "rgba(255, 255, 255, 0.20)"
+                        : "rgba(0, 0, 0, 0.08)",
                   borderTopColor: isCrimson
                     ? "rgba(255, 175, 195, 0.55)"
-                    : isDark
-                      ? "rgba(255, 255, 255, 0.34)"
-                      : "rgba(255, 255, 255, 0.7)",
+                    : isViolet
+                      ? "rgba(233, 213, 255, 0.58)"
+                      : isDark
+                        ? "rgba(255, 255, 255, 0.34)"
+                        : "rgba(255, 255, 255, 0.7)",
                 }
               : {
                   backgroundColor: isCrimson
                     ? isDark
                       ? "rgba(34, 17, 24, 0.86)"
                       : "rgba(254, 243, 247, 0.92)"
-                    : isDark
-                      ? "rgba(26, 26, 32, 0.84)"
-                      : "rgba(248, 248, 252, 0.90)",
+                    : isViolet
+                      ? isDark
+                        ? "rgba(28, 19, 39, 0.86)"
+                        : "rgba(247, 241, 254, 0.92)"
+                      : isDark
+                        ? "rgba(26, 26, 32, 0.84)"
+                        : "rgba(248, 248, 252, 0.90)",
                   borderWidth: 1,
                   borderColor: isCrimson
                     ? isDark
                       ? "rgba(244, 63, 94, 0.22)"
                       : "rgba(190, 18, 60, 0.15)"
-                    : isDark
-                      ? "rgba(255, 255, 255, 0.13)"
-                      : "rgba(0, 0, 0, 0.09)",
+                    : isViolet
+                      ? isDark
+                        ? "rgba(168, 85, 247, 0.24)"
+                        : "rgba(124, 58, 237, 0.15)"
+                      : isDark
+                        ? "rgba(255, 255, 255, 0.13)"
+                        : "rgba(0, 0, 0, 0.09)",
                   borderTopColor: isCrimson
                     ? isDark
                       ? "rgba(255, 136, 162, 0.36)"
                       : "rgba(255, 255, 255, 0.95)"
-                    : isDark
-                      ? "rgba(255, 255, 255, 0.24)"
-                      : "rgba(255, 255, 255, 0.95)",
+                    : isViolet
+                      ? isDark
+                        ? "rgba(208, 166, 255, 0.36)"
+                        : "rgba(255, 255, 255, 0.95)"
+                      : isDark
+                        ? "rgba(255, 255, 255, 0.24)"
+                        : "rgba(255, 255, 255, 0.95)",
                   borderBottomColor: isCrimson
                     ? isDark
                       ? "rgba(225, 29, 72, 0.12)"
                       : "rgba(190, 18, 60, 0.16)"
-                    : isDark
-                      ? "rgba(255, 255, 255, 0.06)"
-                      : "rgba(0, 0, 0, 0.11)",
+                    : isViolet
+                      ? isDark
+                        ? "rgba(147, 51, 234, 0.13)"
+                        : "rgba(124, 58, 237, 0.16)"
+                      : isDark
+                        ? "rgba(255, 255, 255, 0.06)"
+                        : "rgba(0, 0, 0, 0.11)",
                 }
             : undefined
         }
