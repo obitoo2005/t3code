@@ -542,16 +542,16 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
     [onDeletePendingTask, pendingTask],
   );
 
-  const sessionIconSize = Math.max(26, Math.round(projectIconSize * 1.15));
+  const sessionIconSize = Math.max(36, Math.round(projectIconSize * 1.6));
   const showAndroidAvatar = Platform.OS === "android";
   const titleTextInset = showAndroidAvatar
-    ? sessionIconSize + 10
+    ? sessionIconSize + 12
     : props.project
       ? projectIconSize + 8
       : 0;
   const rowContent = (
     <>
-      <View className={showAndroidAvatar ? "flex-row items-start gap-2.5" : "flex-row items-start gap-2"}>
+      <View className={showAndroidAvatar ? "flex-row items-center gap-3" : "flex-row items-start gap-2"}>
         {showAndroidAvatar ? (
           <View className="justify-center" style={{ minHeight: titleLineHeight }}>
             <SessionAvatarIcon seed={pendingTask.key} size={sessionIconSize} />
@@ -1390,16 +1390,16 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       ? primaryAction.swipeHint
       : primaryAction.swipeSnoozeHint;
 
-  const sessionIconSize = Math.max(26, Math.round(projectIconSize * 1.15));
+  const sessionIconSize = Math.max(36, Math.round(projectIconSize * 1.6));
   const showAndroidAvatar = Platform.OS === "android";
   const titleTextInset = showAndroidAvatar
-    ? sessionIconSize + 10
+    ? sessionIconSize + 12
     : props.project
       ? projectIconSize + 8
       : 0;
   const cardContent = (
     <>
-      <View className={showAndroidAvatar ? "flex-row items-start gap-2.5" : "flex-row items-start gap-2"}>
+      <View className={showAndroidAvatar ? "flex-row items-center gap-3" : "flex-row items-start gap-2"}>
         {showAndroidAvatar ? (
           <View className="justify-center" style={{ minHeight: titleLineHeight }}>
             <SessionAvatarIcon seed={thread.id} size={sessionIconSize} />

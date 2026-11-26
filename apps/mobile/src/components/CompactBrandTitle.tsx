@@ -121,8 +121,8 @@ export function CompactBrandTitle(
   const { scale } = useAndroidControlSizing();
   const reducedMotion = useReduceMotionEnabled();
   const clampedScale = Math.min(scale, 1.15);
-  const iconSize = Math.round(32 * clampedScale);
-  const iconRadius = Math.round(9 * clampedScale);
+  const iconSize = Math.round(40 * clampedScale);
+  const iconRadius = Math.round(11 * clampedScale);
 
   const [burstKey, setBurstKey] = useState(0);
   const [burstVisible, setBurstVisible] = useState(false);
@@ -174,7 +174,7 @@ export function CompactBrandTitle(
     <View
       className="flex-row items-center"
       style={[
-        { marginLeft: titleOffset, gap: Math.round(9 * clampedScale), overflow: "visible" },
+        { marginLeft: titleOffset, gap: Math.round(10 * clampedScale), overflow: "visible" },
         props.fit && { flexShrink: 1 },
       ]}
     >

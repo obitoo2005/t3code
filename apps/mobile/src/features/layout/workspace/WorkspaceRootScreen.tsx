@@ -67,7 +67,7 @@ function WorkspaceRootTitle(props: {
       ? m(TAB_TITLES[state.selectedTab])
       : gt("Navigation", { $context: "screen title when every navigation tab is hidden" });
   return (
-    <View style={{ width: maxWidth, minHeight: 32, justifyContent: "center" }}>
+    <View style={{ width: maxWidth, minHeight: 40, justifyContent: "center" }}>
       <WorkspaceConnectionTitle
         brand={
           !settingsOpen && isSharedSlotTab(state.selectedTab) ? (
