@@ -179,7 +179,7 @@ export function ProviderInstanceIcon(props: {
   const accentColor = normalizeProviderAccentColor(props.accentColor);
   return (
     <View style={{ position: "relative" }}>
-      <View style={{ opacity: 0.6 }}>
+      <View style={{ opacity: 0.92 }}>
         <ProviderIcon iconUrl={props.iconUrl} provider={props.provider} size={props.size} />
       </View>
       {props.showBadge ? (

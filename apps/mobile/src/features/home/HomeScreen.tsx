@@ -69,7 +69,11 @@ import {
   deriveCenteredContentHorizontalPadding,
 } from "../../lib/layout";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { FloatingActionButton } from "../../components/ui/FloatingActionButton";
+import {
+  AndroidGlassPressable,
+  AndroidGlassSurface,
+} from "../../components/ui/AndroidGlassSurface";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import type { WorkspaceEnvironment, WorkspaceState } from "../../state/workspaceModel";
 import type { SavedRemoteConnection } from "../../lib/connection";
 import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
@@ -818,13 +822,46 @@ export function HomeScreen(props: HomeScreenProps) {
                 onAction={emptyState.showsAddEnvironment ? props.onAddConnection : undefined}
                 action={
                   Platform.OS === "android" && emptyState.showsAddEnvironment ? (
-                    <FloatingActionButton
-                      label={gt("Add environment")}
-                      icon="plus"
-                      variant="extended"
-                      tone="primary"
-                      onPress={props.onAddConnection}
-                    />
+                    <AndroidGlassPressable
+                      accessibilityLabel={gt("Add environment")}
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        props.onAddConnection();
+                      }}
+                      scaleTo={0.95}
+                    >
+                      <AndroidGlassSurface
+                        tone="elevated"
+                        radius={999}
+                        style={{
+                          height: 48,
+                          paddingHorizontal: 22,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 9,
+                          boxShadow: [
+                            {
+                              offsetX: 0,
+                              offsetY: 8,
+                              blurRadius: 22,
+                              color: "rgba(0, 0, 0, 0.34)",
+                            },
+                          ],
+                        }}
+                      >
+                        <SymbolView
+                          name="plus"
+                          size={18}
+                          weight="semibold"
+                          tintColorClassName="accent-foreground"
+                          type="monochrome"
+                        />
+                        <Text className="font-t3-semibold text-sm text-foreground">
+                          {gt("Add environment")}
+                        </Text>
+                      </AndroidGlassSurface>
+                    </AndroidGlassPressable>
                   ) : undefined
                 }
                 variant="plain"

@@ -1626,7 +1626,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               (driver, index) => (
                 /* oxlint-disable react/no-array-index-key -- Provider history can repeat a driver; these decorative icons have no local state. */ <View
                   key={`${driver}:${index}`}
-                  className="-mr-1 opacity-30"
+                  className="-mr-1 opacity-70"
                 >
                   <ProviderIcon provider={driver} size={12} />
                 </View>

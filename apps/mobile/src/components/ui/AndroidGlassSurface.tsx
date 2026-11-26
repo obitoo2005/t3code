@@ -1,5 +1,12 @@
 import type { ReactNode } from "react";
-import { View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import {
+  Pressable,
+  View,
+  type Insets,
+  type StyleProp,
+  type ViewProps,
+  type ViewStyle,
+} from "react-native";
 
 export type AndroidGlassTone = "chrome" | "elevated" | "composer" | "menu";
 
@@ -29,7 +36,26 @@ export function AndroidGlassHeaderScrim(_props: {
 
 export function AndroidGlassPressable(props: {
   readonly children: ReactNode;
+  readonly onPress?: () => void;
+  readonly disabled?: boolean;
+  readonly accessibilityLabel?: string;
+  readonly accessibilityRole?: "button" | "tab";
+  readonly accessibilitySelected?: boolean;
+  readonly hitSlop?: Insets | number;
   readonly style?: StyleProp<ViewStyle>;
+  readonly contentStyle?: StyleProp<ViewStyle>;
+  readonly scaleTo?: number;
 }) {
-  return <View style={props.style}>{props.children}</View>;
+  return (
+    <Pressable
+      disabled={props.disabled}
+      onPress={props.onPress}
+      hitSlop={props.hitSlop}
+      accessibilityRole={props.accessibilityRole ?? "button"}
+      accessibilityLabel={props.accessibilityLabel}
+      style={props.style}
+    >
+      <View style={props.contentStyle}>{props.children}</View>
+    </Pressable>
+  );
 }

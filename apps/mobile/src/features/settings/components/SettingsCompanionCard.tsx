@@ -9,7 +9,6 @@ import {
   type CompanionMood,
 } from "../../../components/AkenoMascot";
 import { AppText as Text } from "../../../components/ui/AppText";
-import { MOBILE_THEME_OPTIONS } from "../../../lib/mobileTheme";
 import { getTimeOfDayGreeting } from "../../../lib/riasEnhancements";
 import { playUiSound } from "../../../lib/uiSoundFx";
 import { useDailyActivityStats } from "../../../state/use-rias-enhancements";
@@ -18,7 +17,6 @@ import { useAppearancePreferences } from "../appearance/AppearancePreferencesPro
 const PET_LINES: readonly { readonly mood: CompanionMood; readonly text: string }[] = [
   { mood: "happy", text: "Hehe~ ready to ship more? ♥" },
   { mood: "surprised", text: "Ooh! Extra luck unlocked ✨" },
-  { mood: "cute", text: "Pure OLED & 165Hz vibes ✦" },
   { mood: "happy", text: "Best dev squad ever 💜" },
 ];
 
@@ -31,14 +29,6 @@ export const SettingsCompanionCard = memo(function SettingsCompanionCard() {
   const [lateNight] = useState(() => isLateNightHour());
 
   const isDark = themeAppearance === "dark";
-  const themeLabel =
-    MOBILE_THEME_OPTIONS.find((option) => option.id === themeId)?.label ?? "Rias Code";
-  const accent =
-    themeId === "akeno-violet"
-      ? "#A855F7"
-      : themeId === "rias-crimson"
-        ? "#F43F5E"
-        : "#60A5FA";
   const borderColor =
     themeId === "akeno-violet"
       ? isDark
@@ -89,25 +79,7 @@ export const SettingsCompanionCard = memo(function SettingsCompanionCard() {
       <View style={styles.topRow}>
         <CompanionMascotSprite mood={activeMood} size={76} glow onPress={handlePet} />
         <View style={styles.infoCol}>
-          <View style={styles.badgeRow}>
-            <Text className="font-t3-bold text-base text-foreground">{companionName}</Text>
-            <View
-              style={[
-                styles.themePill,
-                {
-                  backgroundColor: isDark
-                    ? "rgba(255, 255, 255, 0.08)"
-                    : "rgba(0, 0, 0, 0.06)",
-                  borderColor,
-                },
-              ]}
-            >
-              <View style={[styles.themeDot, { backgroundColor: accent }]} />
-              <Text textRole="caption" className="font-t3-medium text-foreground-muted">
-                {themeLabel}
-              </Text>
-            </View>
-          </View>
+          <Text className="font-t3-bold text-base text-foreground">{companionName}</Text>
           <Text textRole="footnote" className="mt-1 text-foreground-muted" numberOfLines={2}>
             {petEntry ? petEntry.text : `${greeting.headline} · ${greeting.subline}`}
           </Text>
@@ -174,26 +146,6 @@ const styles = StyleSheet.create({
   infoCol: {
     flex: 1,
     minWidth: 0,
-  },
-  badgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  themePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  themeDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
   },
   statsRow: {
     flexDirection: "row",
