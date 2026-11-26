@@ -27,11 +27,14 @@ import { WorkspaceTabPanes } from "./WorkspaceTabPanes";
 import { WorkspaceAppBarScope } from "../../../components/ui/WorkspaceAppBar.android";
 import { usePaneRole } from "../../../components/ui/Pane";
 import { AndroidWorkspaceSidebar } from "./AndroidWorkspaceSidebar.android";
+import { useAndroidWorkspaceRoot } from "./AndroidWorkspaceTabsProvider";
+import { SettingsListScreen } from "../../settings/SettingsRouteScreen";
 import { workspaceUsesColumns, type WorkspaceTab } from "./workspace-tabs-state";
 import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
 import { useHardwareBack } from "../../../lib/backHandler";
 
-const TABS: readonly WorkspaceTab[] = NAVIGATION_TAB_ORDER;
+type CompactPaneTab = WorkspaceTab | "settings";
+const COMPACT_PANE_TABS: readonly CompactPaneTab[] = [...NAVIGATION_TAB_ORDER, "settings"];
 
 export function WorkspaceRootScreen() {
   return usePaneRole() === "sidebar" ? <AndroidWorkspaceSidebar /> : <WorkspaceRoot />;
@@ -56,15 +59,22 @@ function WorkspaceRoot() {
           ? fabClearance + 16
           : 16,
   };
+  const root = useAndroidWorkspaceRoot();
+  const inlineSettings = !layout.usesSplitView && Boolean(root?.inlineSettingsOpen);
   const tab = workspace.state.selectedTab;
+  const activePane: CompactPaneTab = inlineSettings ? "settings" : tab;
   const selectTab = useSelectWorkspaceTab();
   // Tabs are panes of Home, not routes, so Back has nothing to pop and would leave the app.
   // An open search keeps Back for itself.
+  const activeSearchMode = inlineSettings
+    ? workspace.state.tabs.settings.searchMode
+    : workspace.state.tabs[tab].searchMode;
   useHardwareBack(
-    tab !== "threads" &&
+    (inlineSettings || tab !== "threads") &&
       enabled.includes("threads") &&
-      workspace.state.tabs[tab].searchMode === "resting",
+      activeSearchMode === "resting",
     () => {
+      root?.setInlineSettingsOpen(false);
       selectTab("threads");
       return true;
     },
@@ -82,13 +92,13 @@ function WorkspaceRoot() {
               layout.usesSplitView
                 ? insets
                 : floatingTabsEnabled
-                  ? !workspaceUsesColumns(tab)
+                  ? inlineSettings || !workspaceUsesColumns(tab)
                     ? { ...insets, bottom: context.bottomClearance }
                     : insets
                   : { ...insets, bottom: 0 }
             }
           >
-            {enabled.length === 0 ? (
+            {enabled.length === 0 && !inlineSettings ? (
               layout.usesSplitView ? (
                 <View className="flex-1 bg-screen" />
               ) : (
@@ -97,14 +107,16 @@ function WorkspaceRoot() {
             ) : (
               <WorkspaceAppBarScope enabled={!layout.usesSplitView}>
                 <WorkspaceTabPanes
-                  tabs={TABS}
-                  selected={tab}
-                  renderTab={(tab) =>
-                    tab === "threads" ? (
+                  tabs={COMPACT_PANE_TABS}
+                  selected={activePane}
+                  renderTab={(paneTab) =>
+                    paneTab === "settings" ? (
+                      <SettingsListScreen sidebar={false} selected={null} workspaceRoot />
+                    ) : paneTab === "threads" ? (
                       <HomeRouteScreen />
-                    ) : tab === "usage" || tab === "workflows" ? (
+                    ) : paneTab === "usage" || paneTab === "workflows" ? (
                       <WorkspacePageFrame width={workspacePageWidth ?? null}>
-                        <WorkspaceExtraTab tab={tab} />
+                        <WorkspaceExtraTab tab={paneTab} />
                       </WorkspacePageFrame>
                     ) : layout.usesSplitView ? (
                       <>
@@ -112,14 +124,14 @@ function WorkspaceRoot() {
                         <AppBar
                           embedded
                           title={
-                            tab === "issues"
+                            paneTab === "issues"
                               ? gt("Issues", { $context: "screen title, list of issues" })
                               : gt("Pull requests")
                           }
                         />
-                        <WorkspaceEmptyDetail tab={tab} />
+                        <WorkspaceEmptyDetail tab={paneTab} />
                       </>
-                    ) : tab === "issues" ? (
+                    ) : paneTab === "issues" ? (
                       <IssuesScreen
                         renderFrame={(filters, list) => (
                           <>

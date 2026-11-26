@@ -238,7 +238,7 @@ const SETTINGS_SCREENS = {
     linking: "settings",
     options: {
       ...pageRoute({ itemStyle: "standard", root: true }),
-      ...(Platform.OS === "android" ? { animation: "fade" as const } : {}),
+      ...(Platform.OS === "android" ? { animation: "none" as const } : {}),
     },
   }),
   SettingsEnvironments: createNativeStackScreen({

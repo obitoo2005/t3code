@@ -241,7 +241,7 @@ export function AndroidGlassSurface({
           pointerEvents="none"
           blurTarget={blurTarget}
           blurMethod="dimezisBlurViewSdk31Plus"
-          blurReductionFactor={4}
+          blurReductionFactor={8}
           intensity={blurIntensity}
           tint={isDark ? "systemChromeMaterialDark" : "systemChromeMaterialLight"}
           style={[StyleSheet.absoluteFill, { borderRadius: radius }]}

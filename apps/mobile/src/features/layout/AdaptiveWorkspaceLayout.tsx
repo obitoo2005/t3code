@@ -281,7 +281,7 @@ function AdaptiveWorkspaceLayoutContent(
   const pathname = props.pathname;
   const workspace = useWorkspaceTabs();
   // Settings and Usage occupy the workspace rather than a list/detail pair.
-  const androidSettingsOpen = useAndroidWorkspaceRoot()?.settingsOpen ?? false;
+  const androidSettingsOpen = useAndroidWorkspaceRoot()?.routeSettingsOpen ?? false;
   const safeAreaInsets = useSafeAreaInsets();
   const workspacePage =
     Platform.OS === "android" &&

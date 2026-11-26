@@ -28,7 +28,7 @@ import {
 import { SymbolView, type AppSymbolName } from "../../../components/ui/AppSymbol";
 import { useAndroidControlSizing } from "../../../components/ui/useAndroidControlSizing";
 import { useToolbarLayout } from "../../../components/ui/useToolbarLayout";
-import { IOS_SPRING_LIQUID_LENS, IOS_SPRING_SMOOTH } from "../../../lib/iosMotion";
+import { IOS_SPRING_LIQUID_LENS, IOS_SPRING_SNAPPY } from "../../../lib/iosMotion";
 import { rootNavigationRef } from "../../../lib/rootNavigation";
 import { useWorkspaceConnectionState } from "../../../state/workspace";
 import { useSoftKeyboardShowing } from "../../keyboard/useSoftKeyboardShowing";
@@ -143,12 +143,33 @@ export function AndroidWorkspaceNavigation(props: {
   );
   const selectWorkspaceTab = (tab: AndroidWorkspaceNavigationTab) => {
     Keyboard.dismiss();
-    if (tab !== "settings") workspace.dispatch({ type: "select", tab });
-    // Reset the root stack even when a nested settings navigator has focus.
-    // The provider renders inside the root stack's layout, so the container's root state is
-    // that stack's current state.
     const rootState = rootNavigationRef.getRootState();
-    if (root && rootState) {
+    const alreadyAtBareHome =
+      rootState !== undefined &&
+      rootState.routes.length === 1 &&
+      rootState.routes[0]?.name === "Home";
+
+    if (!layout.usesSplitView) {
+      if (tab === "settings") {
+        root?.setInlineSettingsOpen(true);
+      } else {
+        root?.setInlineSettingsOpen(false);
+        workspace.dispatch({ type: "select", tab });
+      }
+      // When already on Home, switch panes in-place in 0ms without resetting the navigation stack!
+      if (root && rootState && !alreadyAtBareHome) {
+        navigation.dispatch({
+          ...CommonActions.reset(androidWorkspaceTabNavigationState(rootState, "threads", false)),
+          target: root.key,
+        });
+      }
+      props.onSelect?.();
+      return;
+    }
+
+    root?.setInlineSettingsOpen(false);
+    if (tab !== "settings") workspace.dispatch({ type: "select", tab });
+    if (root && rootState && !(tab !== "settings" && alreadyAtBareHome)) {
       navigation.dispatch({
         ...CommonActions.reset(
           androidWorkspaceTabNavigationState(rootState, tab, layout.usesSplitView),
@@ -262,16 +283,18 @@ const FloatingGlassDock = memo(function FloatingGlassDock(props: {
 }) {
   const innerPadding = 4;
   const tabCount = Math.max(1, props.tabs.length);
+  const innerWidth = Math.max(0, props.pillWidth - innerPadding * 2);
+  const slotWidth = innerWidth / tabCount;
   const activeIndex = Math.max(0, props.tabs.indexOf(props.selectedTab));
   const prevIndexRef = useRef(activeIndex);
 
+  // Pure GPU transform-only animations (never animate BlurView layout width per frame!).
   const activeIndexProgress = useSharedValue(activeIndex);
-  const animatedPillWidth = useSharedValue(props.pillWidth);
-  const composeProgress = useSharedValue(props.showsCompose ? 1 : 0);
   const lensStretchX = useSharedValue(1);
   const lensStretchY = useSharedValue(1);
+  const composePop = useSharedValue(1);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated liquid lens glide and subtle jelly stretch when active tab changes
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated 165Hz GPU transform glide on the active glass tab lens
   useEffect(() => {
     const moved = prevIndexRef.current !== activeIndex;
     prevIndexRef.current = activeIndex;
@@ -279,52 +302,38 @@ const FloatingGlassDock = memo(function FloatingGlassDock(props: {
     if (moved) {
       lensStretchX.set(
         withSequence(
-          withTiming(1.13, { duration: 90, easing: Easing.out(Easing.quad) }),
+          withTiming(1.1, { duration: 80, easing: Easing.out(Easing.quad) }),
           withSpring(1, IOS_SPRING_LIQUID_LENS),
         ),
       );
       lensStretchY.set(
         withSequence(
-          withTiming(0.91, { duration: 90, easing: Easing.out(Easing.quad) }),
+          withTiming(0.93, { duration: 80, easing: Easing.out(Easing.quad) }),
           withSpring(1, IOS_SPRING_LIQUID_LENS),
         ),
       );
     }
   }, [activeIndex, activeIndexProgress, lensStretchX, lensStretchY]);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fluidly spring-morphs dock pill width and compose button visibility like iOS 26
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- plays crisp GPU spring scale-in when the compose button mounts on Chats
   useEffect(() => {
-    animatedPillWidth.set(withSpring(props.pillWidth, IOS_SPRING_SMOOTH));
-    composeProgress.set(withSpring(props.showsCompose ? 1 : 0, IOS_SPRING_SMOOTH));
-  }, [animatedPillWidth, composeProgress, props.pillWidth, props.showsCompose]);
+    if (props.showsCompose) {
+      composePop.set(0.82);
+      composePop.set(withSpring(1, IOS_SPRING_SNAPPY));
+    }
+  }, [composePop, props.showsCompose]);
 
-  const dockPillContainerStyle = useAnimatedStyle(() => ({
-    width: Math.max(0, animatedPillWidth.value),
-    height: props.dockHeight,
+  const indicatorStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: activeIndexProgress.value * slotWidth },
+      { scaleX: lensStretchX.value },
+      { scaleY: lensStretchY.value },
+    ],
   }));
 
-  const indicatorStyle = useAnimatedStyle(() => {
-    const innerWidth = Math.max(0, animatedPillWidth.value - innerPadding * 2);
-    const slotWidth = innerWidth / tabCount;
-    return {
-      width: slotWidth,
-      transform: [
-        { translateX: activeIndexProgress.value * slotWidth },
-        { scaleX: lensStretchX.value },
-        { scaleY: lensStretchY.value },
-      ],
-    };
-  });
-
-  const composeWrapperStyle = useAnimatedStyle(() => {
-    const p = Math.min(1, Math.max(0, composeProgress.value));
-    return {
-      width: props.dockHeight * p,
-      marginLeft: FLOATING_TABS.gap * p,
-      opacity: Math.min(1, p * 1.25),
-      transform: [{ scale: 0.68 + 0.32 * p }],
-    };
-  });
+  const composePopStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: composePop.value }],
+  }));
 
   const activeLensBg = props.isDark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.08)";
   const activeLensBorder = props.isDark ? "rgba(255, 255, 255, 0.18)" : "rgba(255, 255, 255, 0.72)";
@@ -337,132 +346,123 @@ const FloatingGlassDock = memo(function FloatingGlassDock(props: {
       style={{
         flexDirection: "row",
         alignItems: "center",
-        justifyContent: "center",
+        justifyContent: props.showsCompose ? "space-between" : "center",
+        gap: FLOATING_TABS.gap,
         width: "100%",
       }}
     >
-      <Animated.View style={dockPillContainerStyle}>
-        <AndroidGlassSurface
-          radius={999}
-          tone="elevated"
-          style={{
-            width: "100%",
-            height: props.dockHeight,
-          }}
-        >
-          <View
-            accessibilityRole="tablist"
-            style={{
-              flex: 1,
-              flexDirection: "row",
-              alignItems: "center",
-              padding: innerPadding,
-            }}
-          >
-            {props.pillWidth > 0 ? (
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  {
-                    position: "absolute",
-                    left: innerPadding,
-                    top: innerPadding,
-                    bottom: innerPadding,
-                    borderRadius: 999,
-                    backgroundColor: activeLensBg,
-                    borderWidth: 1,
-                    borderColor: activeLensBorder,
-                  },
-                  indicatorStyle,
-                ]}
-              />
-            ) : null}
-            {props.tabs.map((tab) => {
-              const selected = tab === props.selectedTab;
-              return (
-                <AndroidGlassPressable
-                  key={tab}
-                  accessibilityRole="tab"
-                  accessibilitySelected={selected}
-                  accessibilityLabel={props.tabTitles[tab] ?? tab}
-                  onPress={() => props.onSelectTab(tab)}
-                  scaleTo={0.87}
-                  bloomRadius={999}
-                  style={{
-                    flex: 1,
-                    height: "100%",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: 999,
-                    overflow: "hidden",
-                  }}
-                  contentStyle={{
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <SymbolView
-                    name={tabIconName(tab)}
-                    size={props.iconSize}
-                    tintColor={selected ? selectedIconColor : unselectedIconColor}
-                    type="monochrome"
-                  />
-                </AndroidGlassPressable>
-              );
-            })}
-          </View>
-        </AndroidGlassSurface>
-      </Animated.View>
-
-      <Animated.View
-        pointerEvents={props.showsCompose ? "auto" : "none"}
-        style={[
-          {
-            height: props.dockHeight,
-            overflow: "hidden",
-            alignItems: "center",
-            justifyContent: "center",
-          },
-          composeWrapperStyle,
-        ]}
+      <AndroidGlassSurface
+        radius={999}
+        tone="elevated"
+        style={{
+          width: props.pillWidth,
+          height: props.dockHeight,
+        }}
       >
-        <AndroidGlassSurface
-          radius={999}
-          tone="elevated"
+        <View
+          accessibilityRole="tablist"
           style={{
-            width: props.dockHeight,
-            height: props.dockHeight,
+            flex: 1,
+            flexDirection: "row",
             alignItems: "center",
-            justifyContent: "center",
+            padding: innerPadding,
           }}
         >
-          <AndroidGlassPressable
-            accessibilityLabel={props.newThreadTitle}
-            onPress={props.onNewThread}
-            scaleTo={0.89}
-            bloomRadius={999}
+          {slotWidth > 0 ? (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                {
+                  position: "absolute",
+                  left: innerPadding,
+                  top: innerPadding,
+                  bottom: innerPadding,
+                  width: slotWidth,
+                  borderRadius: 999,
+                  backgroundColor: activeLensBg,
+                  borderWidth: 1,
+                  borderColor: activeLensBorder,
+                },
+                indicatorStyle,
+              ]}
+            />
+          ) : null}
+          {props.tabs.map((tab) => {
+            const selected = tab === props.selectedTab;
+            return (
+              <AndroidGlassPressable
+                key={tab}
+                accessibilityRole="tab"
+                accessibilitySelected={selected}
+                accessibilityLabel={props.tabTitles[tab] ?? tab}
+                onPress={() => props.onSelectTab(tab)}
+                scaleTo={0.88}
+                bloomRadius={999}
+                style={{
+                  flex: 1,
+                  height: "100%",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 999,
+                  overflow: "hidden",
+                }}
+                contentStyle={{
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <SymbolView
+                  name={tabIconName(tab)}
+                  size={props.iconSize}
+                  tintColor={selected ? selectedIconColor : unselectedIconColor}
+                  type="monochrome"
+                />
+              </AndroidGlassPressable>
+            );
+          })}
+        </View>
+      </AndroidGlassSurface>
+
+      {props.showsCompose ? (
+        <Animated.View style={composePopStyle}>
+          <AndroidGlassSurface
+            radius={999}
+            tone="elevated"
             style={{
               width: props.dockHeight,
               height: props.dockHeight,
               alignItems: "center",
               justifyContent: "center",
-              borderRadius: 999,
-              overflow: "hidden",
-            }}
-            contentStyle={{
-              alignItems: "center",
-              justifyContent: "center",
             }}
           >
-            <SymbolView
-              name="square.and.pencil"
-              size={props.iconSize}
-              tintColor={selectedIconColor}
-              type="monochrome"
-            />
-          </AndroidGlassPressable>
-        </AndroidGlassSurface>
-      </Animated.View>
+            <AndroidGlassPressable
+              accessibilityLabel={props.newThreadTitle}
+              onPress={props.onNewThread}
+              scaleTo={0.9}
+              bloomRadius={999}
+              style={{
+                width: props.dockHeight,
+                height: props.dockHeight,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 999,
+                overflow: "hidden",
+              }}
+              contentStyle={{
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <SymbolView
+                name="square.and.pencil"
+                size={props.iconSize}
+                tintColor={selectedIconColor}
+                type="monochrome"
+              />
+            </AndroidGlassPressable>
+          </AndroidGlassSurface>
+        </Animated.View>
+      ) : null}
     </View>
   );
 });

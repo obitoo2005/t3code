@@ -22,8 +22,12 @@ export function SettingsRow(props: {
 }) {
   const navigation = useNavigation();
   const sidebar = use(SettingsSidebarContext);
-  // The Settings list opens pages in place of the detail column; a page's own rows push below.
-  const inList = ["Home", "Settings"].includes(useRoute().name);
+  // The Settings list opens pages in place of the detail column on split layouts; on compact
+  // Android when Settings is an inline Home pane, push the page directly so Back glides smoothly.
+  const routeName = useRoute().name;
+  const inList = ["Home", "Settings"].includes(routeName);
+  const pushDirectlyFromInlineHome =
+    Platform.OS === "android" && !sidebar && routeName === "Home";
   const valueBelow =
     props.valuePosition === "below" ||
     (props.valuePosition === undefined && Platform.OS === "android");
@@ -36,7 +40,8 @@ export function SettingsRow(props: {
   };
   const onPress = () => {
     if (props.target) {
-      if (inList) openSettings(navigation, props.target);
+      if (pushDirectlyFromInlineHome) navigation.navigate(props.target);
+      else if (inList) openSettings(navigation, props.target);
       else navigation.navigate(props.target);
     } else if (props.fullScreenTarget) {
       navigation.navigate(props.fullScreenTarget);

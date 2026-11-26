@@ -1,5 +1,5 @@
 import type { NavigationState } from "@react-navigation/native";
-import { createContext, use, type ReactNode } from "react";
+import { createContext, use, useState, type ReactNode } from "react";
 import { Platform } from "react-native";
 import { androidWorkspaceSettingsOpen } from "./android-workspace-tabs";
 import { WorkspaceTabsProvider } from "./WorkspaceTabsContext";
@@ -11,8 +11,13 @@ interface AndroidWorkspaceRoot {
    * Target the root stack's key (and read `rootNavigationRef`'s state) so a tab press resets the root.
    */
   readonly key: string;
-  /** Settings is derived from navigation rather than kept in the tab reducer. */
+  /** True when Settings is active either as an inline Home pane or as a pushed Settings stack route. */
   readonly settingsOpen: boolean;
+  /** True only when a `Settings*` route is on the root stack above Home. */
+  readonly routeSettingsOpen: boolean;
+  /** True when the compact Settings list is shown in-place inside `Home` with zero stack reset. */
+  readonly inlineSettingsOpen: boolean;
+  readonly setInlineSettingsOpen: (open: boolean) => void;
   readonly settingsRoute: NavigationState["routes"][number] | undefined;
   readonly settingsPage: string | null;
 }
@@ -29,15 +34,26 @@ export function AndroidWorkspaceTabsProvider(props: {
   readonly children: ReactNode;
 }) {
   const key = props.state.key;
-  const settingsOpen = Platform.OS === "android" && androidWorkspaceSettingsOpen(props.state);
+  const [inlineSettingsOpen, setInlineSettingsOpen] = useState(false);
+  const routeSettingsOpen = Platform.OS === "android" && androidWorkspaceSettingsOpen(props.state);
+  const settingsOpen = routeSettingsOpen || inlineSettingsOpen;
   const settingsIndex = props.state.routes.findIndex((route) => route.name === "Settings");
   const settingsRoute = settingsIndex < 0 ? undefined : props.state.routes[settingsIndex];
   const settingsPage =
     settingsIndex < 0 ? null : (props.state.routes[settingsIndex + 1]?.name ?? null);
-  const root = { key, settingsOpen, settingsRoute, settingsPage };
+  const root: AndroidWorkspaceRoot = {
+    key,
+    settingsOpen,
+    routeSettingsOpen,
+    inlineSettingsOpen,
+    setInlineSettingsOpen,
+    settingsRoute,
+    settingsPage,
+  };
   return Platform.OS === "android" ? (
     // A cold-start link lands on a page with no list selection; start on that page's list.
     <WorkspaceTabsProvider
+      settingsOpen={settingsOpen}
       initialTab={workspaceTabOf(props.state.routes.find((route) => route.name !== "Home")?.name)}
     >
       <AndroidWorkspaceRootContext value={root}>{props.children}</AndroidWorkspaceRootContext>

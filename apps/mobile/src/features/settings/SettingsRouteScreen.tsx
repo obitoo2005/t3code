@@ -74,6 +74,7 @@ function SettingsListContent() {
 export function SettingsListScreen(props: {
   readonly sidebar: boolean;
   readonly selected: string | null;
+  readonly workspaceRoot?: boolean;
 }) {
   const gt = useGT();
   const workspace = useWorkspaceTabs();
@@ -83,7 +84,7 @@ export function SettingsListScreen(props: {
       <View className="flex-1 bg-screen">
         <SettingsScreen
           title={gt("Settings")}
-          workspaceRoot={props.sidebar}
+          workspaceRoot={props.workspaceRoot ?? props.sidebar}
           menus={[environmentMenu]}
           search={
             workspace

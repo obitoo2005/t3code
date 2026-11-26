@@ -16,7 +16,7 @@ export function SettingsWorkspaceLayout(props: { readonly children: ReactNode })
   const gt = useGT();
   const root = useAndroidWorkspaceRoot();
   const { layout } = useAdaptiveWorkspaceLayout();
-  const split = root?.settingsOpen === true && layout.usesSplitView;
+  const split = root?.routeSettingsOpen === true && layout.usesSplitView;
   const [visited, setVisited] = useState(split);
   if (split && !visited) setVisited(true);
   const emptyDetail = split && root.settingsPage === null;
