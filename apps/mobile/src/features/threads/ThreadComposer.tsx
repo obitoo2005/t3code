@@ -108,6 +108,7 @@ import {
 import { useSubmitAfterNativeImages } from "./useSubmitAfterNativeImages";
 import { ComposerCommandPopover } from "./ComposerCommandPopover";
 import { ComposerPopoverAnchor } from "./ComposerPopoverAnchor";
+import { ComposerAkenoPet } from "./ComposerAkenoPet";
 import { ComposerQuotaMascot } from "./ComposerQuotaMascot";
 import { ComposerQueuedEditAttachments } from "./ComposerQueuedEdit";
 import { useComposerCommandMenu } from "./use-composer-command-menu";
@@ -263,7 +264,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const gt = useGT();
   const messages = useMessages();
   const project = useProject(scopeProjectRef(props.environmentId, props.selectedThread.projectId));
-  const { themeVariables: materialTheme } = useAppearancePreferences();
+  const { themeVariables: materialTheme, composerPet } = useAppearancePreferences();
+  const [composerStageWidth, setComposerStageWidth] = useState(0);
   const composerPanel = materialTheme["--color-composer-panel"];
   const navigation = useNavigation();
   const foregroundColor = useUniwindTheme()["--color-foreground"];
@@ -734,6 +736,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
 
   const showQuotaMascot =
     Platform.OS === "android" &&
+    composerPet !== "off" &&
     !props.hideQuotaMascot &&
     !isVoiceInputPresented &&
     !(
@@ -812,7 +815,16 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
           />
         ) : null}
 
-        <View className="relative" style={{ overflow: "visible" }}>
+        <View
+          className="relative"
+          style={{ overflow: "visible" }}
+          onLayout={(event) => {
+            const nextWidth = Math.round(event.nativeEvent.layout.width);
+            if (nextWidth > 0 && nextWidth !== composerStageWidth) {
+              setComposerStageWidth(nextWidth);
+            }
+          }}
+        >
           {Platform.OS === "android" && showQuotaMascot ? (
             <>
               <View
@@ -826,25 +838,35 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   backgroundColor: themeColorWithAlpha(composerPanel, 1),
                 }}
               />
-              <View
-                pointerEvents="box-none"
-                style={{
-                  position: "absolute",
-                  right: 16,
-                  top: -65,
-                  zIndex: 12,
-                }}
-              >
-                <ComposerQuotaMascot
-                  environmentId={props.environmentId}
-                  connected={props.connectionState === "connected"}
-                  modelSelection={currentModelSelection}
-                  serverConfig={props.serverConfig}
+              {composerPet === "rei" ? (
+                <View
+                  pointerEvents="box-none"
+                  style={{
+                    position: "absolute",
+                    right: 16,
+                    top: -65,
+                    zIndex: 12,
+                  }}
+                >
+                  <ComposerQuotaMascot
+                    environmentId={props.environmentId}
+                    connected={props.connectionState === "connected"}
+                    modelSelection={currentModelSelection}
+                    serverConfig={props.serverConfig}
+                    activeThreadBusy={props.activeThreadBusy}
+                    size={72}
+                    onPressOpenLimits={usageLimitsOffered ? openUsageLimits : undefined}
+                  />
+                </View>
+              ) : (
+                <ComposerAkenoPet
+                  stageWidth={composerStageWidth}
                   activeThreadBusy={props.activeThreadBusy}
-                  size={72}
+                  isTyping={isFocused || draftMessage.trim().length > 0}
+                  size={74}
                   onPressOpenLimits={usageLimitsOffered ? openUsageLimits : undefined}
                 />
-              </View>
+              )}
             </>
           ) : null}
           <ComposerSurface

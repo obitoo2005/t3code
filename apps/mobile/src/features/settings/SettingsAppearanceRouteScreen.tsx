@@ -5,6 +5,7 @@ import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScroll
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { View } from "react-native";
+import { AppText as Text } from "../../components/ui/AppText";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
@@ -19,24 +20,52 @@ import { playUiSound } from "../../lib/uiSoundFx";
 
 function MascotAppearanceSection() {
   const gt = useGT();
-  const { mascotPreference, setMascotPreference } = useAppearancePreferences();
+  const { mascotPreference, setMascotPreference, composerPet, setComposerPet } =
+    useAppearancePreferences();
   return (
-    <SettingsSection title={gt("Companion mascot")}>
-      <View className="px-4 py-3">
-        <SegmentedControl
-          selected={mascotPreference}
-          onSelect={(value) => {
-            setMascotPreference(value);
-            playUiSound("shuffle");
-          }}
-          options={[
-            { value: "rias", label: gt("Rias") },
-            { value: "akeno", label: gt("Akeno") },
-            { value: "random", label: gt("Both") },
-          ]}
-        />
-      </View>
-    </SettingsSection>
+    <>
+      <SettingsSection title={gt("Companion mascot")}>
+        <View className="px-4 py-3">
+          <SegmentedControl
+            selected={mascotPreference}
+            onSelect={(value) => {
+              setMascotPreference(value);
+              playUiSound("shuffle");
+            }}
+            options={[
+              { value: "rias", label: gt("Rias") },
+              { value: "akeno", label: gt("Akeno") },
+              { value: "random", label: gt("Both") },
+            ]}
+          />
+        </View>
+      </SettingsSection>
+      {Platform.OS === "android" ? (
+        <SettingsSection title={gt("Chat bar pet")}>
+          <View className="gap-2 px-4 py-3">
+            <SegmentedControl
+              selected={composerPet}
+              onSelect={(value) => {
+                setComposerPet(value);
+                playUiSound("shuffle");
+              }}
+              options={[
+                { value: "akeno", label: gt("Akeno") },
+                { value: "rei", label: gt("Rei (Quota)") },
+                { value: "off", label: gt("Off") },
+              ]}
+            />
+            <Text textRole="caption" className="px-0.5 text-foreground-muted">
+              {composerPet === "akeno"
+                ? gt("Akeno sits on your chat bar, roams left & right, and reacts as you chat.")
+                : composerPet === "rei"
+                  ? gt("Rei sits on your chat bar showing your live 5-hour quota banner.")
+                  : gt("Hides the chat bar companion for a minimal composer.")}
+            </Text>
+          </View>
+        </SettingsSection>
+      ) : null}
+    </>
   );
 }
 
