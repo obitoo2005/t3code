@@ -1697,7 +1697,7 @@ function ThreadDetailBody(
                           left: controlInsets.left,
                           paddingTop: Math.max(
                             FLOATING_WORKING_CONTROL_COVERAGE,
-                            Platform.OS === "android" ? 84 : 0,
+                            Platform.OS === "android" ? 90 : 0,
                           ),
                         },
                         columnComposerWidthStyle,
@@ -1710,7 +1710,7 @@ function ThreadDetailBody(
                           right: controlInsets.right,
                           paddingTop: Math.max(
                             FLOATING_WORKING_CONTROL_COVERAGE,
-                            Platform.OS === "android" ? 84 : 0,
+                            Platform.OS === "android" ? 90 : 0,
                           ),
                         },
                         composerWidthStyle,

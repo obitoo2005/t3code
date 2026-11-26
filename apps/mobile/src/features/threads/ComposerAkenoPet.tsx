@@ -30,10 +30,11 @@ const AKENO_PET_SOURCES: Readonly<Record<ComposerAkenoPose, ImageSource>> = {
   sleepy: require("../../../assets/akeno-pet-sleepy.webp"),
 };
 
-const EDGE_MARGIN = 10;
+const EDGE_MARGIN = 18;
 const WALK_SPEED_DP_PER_SEC = 74;
 const AFK_SLEEP_MS = 90_000;
 const DOUBLE_TAP_WINDOW_MS = 340;
+const WALK_RIM_LIFT_DP = -13;
 
 const TAP_SPRING = {
   damping: 11,
@@ -103,6 +104,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   const posX = useSharedValue(maxX);
   const jumpY = useSharedValue(0);
   const walkBobY = useSharedValue(0);
+  const seatLiftY = useSharedValue(0);
   const tiltDeg = useSharedValue(0);
   const popScale = useSharedValue(1);
 
@@ -312,6 +314,18 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     return () => clearTimer(afkTimerRef);
   }, [appActive, pose, props.activeThreadBusy, props.isTyping]);
 
+  // Lift Akeno up onto the top glass rim while walking, and lower her so her uncropped loafers
+  // dangle naturally over the front glass edge when seated.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- smoothly adjusts vertical ledge alignment between walking and sitting poses
+  useEffect(() => {
+    const targetLift = pose === "walk" ? WALK_RIM_LIFT_DP : 0;
+    if (reducedMotion) {
+      seatLiftY.set(targetLift);
+      return;
+    }
+    seatLiftY.set(withSpring(targetLift, TAP_SPRING));
+  }, [pose, reducedMotion, seatLiftY]);
+
   // Clean up all timers on unmount.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears roaming and reaction timers on unmount
   useEffect(() => {
@@ -390,7 +404,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
 
   const spriteStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: jumpY.value + walkBobY.value },
+      { translateY: jumpY.value + walkBobY.value + seatLiftY.value },
       { rotate: `${tiltDeg.value}deg` },
       { scale: popScale.value },
     ],
@@ -406,7 +420,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
         position: "absolute",
         left: 0,
         right: 0,
-        top: -(size - 7),
+        top: -(size - 16),
         height: size + 4,
         zIndex: 12,
         overflow: "visible",

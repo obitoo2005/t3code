@@ -863,7 +863,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   stageWidth={composerStageWidth}
                   activeThreadBusy={props.activeThreadBusy}
                   isTyping={isFocused || draftMessage.trim().length > 0}
-                  size={74}
+                  size={84}
                   onPressOpenLimits={usageLimitsOffered ? openUsageLimits : undefined}
                 />
               )}
