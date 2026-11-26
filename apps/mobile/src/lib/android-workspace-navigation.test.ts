@@ -5,6 +5,7 @@ import {
   type AndroidWorkspaceNavigationTab,
 } from "../features/layout/workspace/android-workspace-tabs";
 import {
+  androidWorkspaceDestinationAnimation,
   linkedThreadStep,
   parentThreadIsBelow,
   resetAndroidWorkspace,
@@ -256,5 +257,18 @@ describe("Android Settings tab", () => {
     const list = openTab(usage, "pullRequests");
     expect(names(list)).toEqual(["Home"]);
     expect(list.routes[0]?.key).toBe(previous.routes[0]?.key);
+  });
+
+  it("uses Apple-style ios_from_right push/back transitions on compact phones", () => {
+    const routes = [
+      { key: "home", name: "Home" },
+      { key: "thread", name: "Thread" },
+      { key: "settings-appearance", name: "SettingsAppearance" },
+      { key: "connections", name: "Connections" },
+    ];
+    expect(androidWorkspaceDestinationAnimation(routes[1]!, routes, false)).toBe("ios_from_right");
+    expect(androidWorkspaceDestinationAnimation(routes[2]!, routes, false)).toBe("ios_from_right");
+    expect(androidWorkspaceDestinationAnimation(routes[3]!, routes, false)).toBe("ios_from_right");
+    expect(androidWorkspaceDestinationAnimation(routes[1]!, routes, true)).toBe("none");
   });
 });

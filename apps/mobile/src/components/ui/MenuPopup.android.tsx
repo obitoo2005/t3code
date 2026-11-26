@@ -10,8 +10,6 @@ import * as Haptics from "expo-haptics";
 import { Fragment, useEffect } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, {
-  Easing,
-  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -20,24 +18,17 @@ import Animated, {
 
 import { useAppearancePreferences } from "../../features/settings/appearance/AppearancePreferencesProvider";
 import { resolveScaledTextRole } from "../../lib/appearancePreferences";
+import {
+  IOS_SPRING_MENU,
+  IOS_TIMING_BACKDROP_IN,
+  IOS_TIMING_BACKDROP_OUT,
+  IOS_TIMING_EXIT,
+} from "../../lib/iosMotion";
 import { AndroidGlassSurface } from "./AndroidGlassSurface.android";
 import { isAppSymbolName, SymbolView, type AppSymbolName } from "./AppSymbol.android";
 import { AppText } from "./AppText";
 import type { MenuPopupProps } from "./MenuPopup";
 import { useAndroidControlSizing } from "./useAndroidControlSizing";
-
-const MENU_ENTRANCE_SPRING = {
-  damping: 26,
-  stiffness: 440,
-  mass: 0.72,
-  reduceMotion: ReduceMotion.System,
-};
-
-const MENU_BACKDROP_TIMING = {
-  duration: 150,
-  easing: Easing.out(Easing.cubic),
-  reduceMotion: ReduceMotion.System,
-};
 
 // The Compose glyph host consumes touches; run the action here and keep accessibility on the row.
 function MenuIcon(props: {
@@ -467,23 +458,32 @@ export function MenuPopup(props: MenuPopupProps) {
   const clampedScale = Math.min(scale, 1.12);
   const menuRadius = Math.round(22 * clampedScale);
   const opensDown = props.placement?.bottom === undefined;
+  const anchorCenterX = props.anchor.x + props.anchor.width / 2;
+  const menuCenterX = (props.placement?.left ?? props.anchor.x) + props.menuWidth / 2;
+  const originShiftX = Math.max(-32, Math.min(32, (anchorCenterX - menuCenterX) * 0.24));
 
   const progress = useSharedValue(0);
   const backdropOpacity = useSharedValue(0);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated entrance spring when the glass menu mounts
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated anchor-origin bloom spring on open and smooth zoom-out on close
   useEffect(() => {
-    progress.set(withSpring(1, MENU_ENTRANCE_SPRING));
-    backdropOpacity.set(withTiming(1, MENU_BACKDROP_TIMING));
-  }, [progress, backdropOpacity]);
+    if (props.closing) {
+      progress.set(withTiming(0, IOS_TIMING_EXIT));
+      backdropOpacity.set(withTiming(0, IOS_TIMING_BACKDROP_OUT));
+      return;
+    }
+    progress.set(withSpring(1, IOS_SPRING_MENU));
+    backdropOpacity.set(withTiming(1, IOS_TIMING_BACKDROP_IN));
+  }, [backdropOpacity, progress, props.closing]);
 
   const cardAnimatedStyle = useAnimatedStyle(() => {
     const p = progress.value;
     return {
-      opacity: Math.min(1, p * 1.35),
+      opacity: Math.min(1, p * 1.38),
       transform: [
-        { translateY: (1 - p) * (opensDown ? -6 : 6) },
-        { scale: 0.94 + 0.06 * p },
+        { translateX: (1 - p) * originShiftX },
+        { translateY: (1 - p) * (opensDown ? -10 : 10) },
+        { scale: 0.88 + 0.12 * p },
       ],
     };
   });

@@ -465,6 +465,7 @@ const config: ExpoConfig = {
     "./plugins/withAndroidInputBackground.cjs",
     "./plugins/withAndroidModernPopupMenu.cjs",
     "./plugins/withAndroidModernAlertDialog.cjs",
+    "./plugins/withAndroidIosMotion.cjs",
     "./plugins/withAndroidPredictiveBackCompat.cjs",
     // MainActivity mods run in reverse order; extend the tablet-orientation override.
     "./plugins/withAndroidWindowDisplayMetrics.cjs",

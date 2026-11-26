@@ -25,6 +25,7 @@ export interface MenuPopupProps {
   readonly onPress: (action: MenuAction) => void;
   readonly onBack: () => void;
   readonly onClose: () => void;
+  readonly closing?: boolean;
   readonly inline?: boolean;
 }
 

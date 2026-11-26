@@ -1,6 +1,6 @@
 import type { MenuAction, MenuComponentProps } from "@react-native-menu/menu";
 import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
-import { use, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import type {
   AccessibilityProps,
   PressableProps,
@@ -24,6 +24,7 @@ import { MenuPopup } from "./MenuPopup";
 
 const SCREEN_MARGIN = 12;
 const ANCHOR_GAP = 8;
+const MENU_EXIT_UNMOUNT_MS = 160;
 
 // Freeze both snapshots at opening so keyboard and screen reflows cannot flip menu direction.
 type AnchorSnapshot = {
@@ -158,26 +159,63 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
   const [anchor, setAnchor] = useState<AnchorSnapshot | null>(null);
   const [path, setPath] = useState<readonly MenuAction[]>([]);
   const [overlay, setOverlay] = useState<OverlayFrame | null>(null);
+  const [closing, setClosing] = useState(false);
   const windowHinge = use(WindowHingeContext);
   const blurTarget = use(AndroidBlurTargetContext);
   // State, not a ref: `open` reaches render-prop children, and the compiler
   // bails out of the whole component when a ref might be read during render.
   const [anchorNode, setAnchorNode] = useState<ViewInstance | null>(null);
   const overlayRef = useRef<ViewInstance>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const keyboardHeight = useKeyboardState((state) => state.height);
-  const close = () => {
+
+  const clearMenuImmediate = () => {
+    if (closeTimerRef.current !== null) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setClosing(false);
     setAnchor(null);
     setPath([]);
     setOverlay(null);
   };
+
+  const close = () => {
+    if (anchor === null || closing) return;
+    setClosing(true);
+    if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
+      setClosing(false);
+      setAnchor(null);
+      setPath([]);
+      setOverlay(null);
+    }, MENU_EXIT_UNMOUNT_MS);
+  };
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears pending menu exit timer on unmount
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, []);
+
   // The in-window menu is pinned to the trigger's spot above the keyboard, which is stale once it hides.
   if (anchor?.keyboardWasVisible === true && !keyboardVisible) {
-    close();
+    clearMenuImmediate();
   }
 
   const open = () => {
+    if (closeTimerRef.current !== null) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setClosing(false);
     anchorNode?.measureInWindow((x, y, width, height) => {
       setAnchor({ x, y, width, height, keyboardWasVisible: keyboardVisible });
     });
@@ -298,6 +336,7 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
           <View
             ref={overlayRef}
             collapsable={false}
+            pointerEvents={closing ? "none" : "auto"}
             className="absolute inset-0"
             onLayout={measureOverlay}
           >
@@ -311,6 +350,7 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
                 actions={levelActions}
                 title={props.title}
                 parent={parent}
+                closing={closing}
                 onPress={onPressItem}
                 onBack={() => setPath((current) => current.slice(0, -1))}
                 onClose={close}

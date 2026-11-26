@@ -3,7 +3,6 @@ import { useGT } from "gt-react-native";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -24,6 +23,7 @@ import Svg, {
 import type { MobileThemeId } from "../lib/mobileTheme";
 import { wrapShareCardLines } from "../lib/riasEnhancements";
 import { playUiSound } from "../lib/uiSoundFx";
+import { AppleSheetModal } from "./ui/AppleSheetModal";
 import { SymbolView } from "./ui/AppSymbol";
 
 export interface ShareCardRequest {
@@ -110,6 +110,7 @@ export const ShareCardHost = memo(function ShareCardHost(props: {
   const insets = useSafeAreaInsets();
   const themeId = props.defaultThemeId;
   const [request, setRequest] = useState<ShareCardRequest | null>(null);
+  const [renderedRequest, setRenderedRequest] = useState<ShareCardRequest | null>(null);
   const [accent, setAccent] = useState<ShareCardAccent>("crimson");
   const [exporting, setExporting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -126,6 +127,7 @@ export const ShareCardHost = memo(function ShareCardHost(props: {
             ? "crimson"
             : "obsidian",
       );
+      setRenderedRequest(next);
       setRequest(next);
     };
     listeners.add(onOpen);
@@ -134,12 +136,14 @@ export const ShareCardHost = memo(function ShareCardHost(props: {
     };
   }, [themeId]);
 
-  const lines = useMemo(() => {
-    if (!request) return [];
-    return wrapShareCardLines(request.body, request.isCode ? 42 : 44, 24);
-  }, [request]);
+  const activeRequest = request ?? renderedRequest;
 
-  if (!request) return null;
+  const lines = useMemo(() => {
+    if (!activeRequest) return [];
+    return wrapShareCardLines(activeRequest.body, activeRequest.isCode ? 42 : 44, 24);
+  }, [activeRequest]);
+
+  if (!activeRequest) return null;
 
   const palette = ACCENT_PALETTES[accent];
   const bodyTop = 92;
@@ -183,13 +187,11 @@ export const ShareCardHost = memo(function ShareCardHost(props: {
   };
 
   return (
-    <Modal
-      visible
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={() => setRequest(null)}
+    <AppleSheetModal
+      visible={request !== null}
+      variant="fullscreen"
+      backdropColor="rgba(4, 4, 8, 0.92)"
+      onClose={() => setRequest(null)}
     >
       <View
         style={[
@@ -274,7 +276,9 @@ export const ShareCardHost = memo(function ShareCardHost(props: {
                 textAnchor="end"
                 fontFamily="sans-serif"
               >
-                {request.subtitle ? `${request.title} · ${request.subtitle}` : request.title}
+                {activeRequest.subtitle
+                  ? `${activeRequest.title} · ${activeRequest.subtitle}`
+                  : activeRequest.title}
               </SvgText>
 
               {/* Subtle divider */}
@@ -292,9 +296,11 @@ export const ShareCardHost = memo(function ShareCardHost(props: {
                   key={index}
                   x={22}
                   y={bodyTop + index * LINE_HEIGHT}
-                  fill={request.isCode ? "#E6EDF3" : "#F4F4F5"}
-                  fontSize={request.isCode ? 12 : 12.8}
-                  fontFamily={request.isCode ? (Platform.OS === "ios" ? "Menlo" : "monospace") : "sans-serif"}
+                  fill={activeRequest.isCode ? "#E6EDF3" : "#F4F4F5"}
+                  fontSize={activeRequest.isCode ? 12 : 12.8}
+                  fontFamily={
+                    activeRequest.isCode ? (Platform.OS === "ios" ? "Menlo" : "monospace") : "sans-serif"
+                  }
                 >
                   {line}
                 </SvgText>
@@ -378,14 +384,13 @@ export const ShareCardHost = memo(function ShareCardHost(props: {
           </Pressable>
         </View>
       </View>
-    </Modal>
+    </AppleSheetModal>
   );
 });
 
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(4, 4, 8, 0.92)",
     paddingHorizontal: 16,
   },
   topBar: {

@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { useGT } from "gt-react-native";
 import { memo, useMemo, useState } from "react";
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
@@ -12,6 +12,7 @@ import { withTokenStarts, type HighlightScheme } from "../lib/highlights";
 import { formatQuotedCodeLines } from "../lib/riasEnhancements";
 import { playUiSound } from "../lib/uiSoundFx";
 import { openShareCard } from "./ShareCardModal";
+import { AppleSheetModal } from "./ui/AppleSheetModal";
 import { SymbolView } from "./ui/AppSymbol";
 
 const MIN_FONT_SIZE = 10;
@@ -180,13 +181,11 @@ export const FullscreenCodeModal = memo(function FullscreenCodeModal(props: {
   );
 
   return (
-    <Modal
+    <AppleSheetModal
       visible={props.visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={props.onClose}
+      variant="fullscreen"
+      backdropColor="rgba(6, 6, 9, 0.98)"
+      onClose={props.onClose}
     >
       <View
         style={[
@@ -346,7 +345,7 @@ export const FullscreenCodeModal = memo(function FullscreenCodeModal(props: {
           </View>
         ) : null}
       </View>
-    </Modal>
+    </AppleSheetModal>
   );
 });
 

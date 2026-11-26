@@ -10,13 +10,14 @@ import {
   type ViewStyle,
 } from "react-native";
 import Animated, {
-  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 
 import { useAppearancePreferences } from "../../features/settings/appearance/AppearancePreferencesProvider";
+import { IOS_SPRING_SNAPPY, IOS_TIMING_EXIT } from "../../lib/iosMotion";
 import { themeColorWithAlpha } from "../../lib/mobileTheme";
 import { AndroidBlurTargetContext } from "./AndroidBlurTargetContext";
 
@@ -30,13 +31,6 @@ export interface AndroidGlassSurfaceProps extends ViewProps {
   readonly blurTarget?: RefObject<ComponentRef<typeof View> | null> | null;
   readonly contentStyle?: StyleProp<ViewStyle>;
 }
-
-const SPRING_CONFIG = {
-  damping: 20,
-  stiffness: 420,
-  mass: 0.68,
-  reduceMotion: ReduceMotion.System,
-};
 
 function glassPalette(
   isDark: boolean,
@@ -302,7 +296,7 @@ export function AndroidGlassHeaderScrim(props: { readonly color: string; readonl
   );
 }
 
-/** Tactile spring-scale wrapper for floating iOS-style glass buttons and tabs. */
+/** Tactile iOS 26 spring-scale & luminous press-bloom wrapper for floating glass buttons and tabs. */
 export function AndroidGlassPressable(props: {
   readonly children: ReactNode;
   readonly onPress?: () => void;
@@ -314,10 +308,17 @@ export function AndroidGlassPressable(props: {
   readonly style?: StyleProp<ViewStyle>;
   readonly contentStyle?: StyleProp<ViewStyle>;
   readonly scaleTo?: number;
+  readonly bloomRadius?: number;
 }) {
+  const { themeAppearance } = useAppearancePreferences();
+  const isDark = themeAppearance === "dark";
   const scale = useSharedValue(1);
+  const bloomOpacity = useSharedValue(0);
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
+  }));
+  const bloomStyle = useAnimatedStyle(() => ({
+    opacity: bloomOpacity.value,
   }));
   const pressedScale = props.scaleTo ?? 0.92;
 
@@ -335,13 +336,36 @@ export function AndroidGlassPressable(props: {
           : {}),
       }}
       onPressIn={() => {
-        if (!props.disabled) scale.set(withSpring(pressedScale, SPRING_CONFIG));
+        if (!props.disabled) {
+          scale.set(withSpring(pressedScale, IOS_SPRING_SNAPPY));
+          if (props.bloomRadius !== undefined) {
+            bloomOpacity.set(withTiming(1, { duration: 90 }));
+          }
+        }
       }}
       onPressOut={() => {
-        scale.set(withSpring(1, SPRING_CONFIG));
+        scale.set(withSpring(1, IOS_SPRING_SNAPPY));
+        if (props.bloomRadius !== undefined) {
+          bloomOpacity.set(withTiming(0, IOS_TIMING_EXIT));
+        }
       }}
       style={props.style}
     >
+      {props.bloomRadius !== undefined ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              borderRadius: props.bloomRadius,
+              backgroundColor: isDark
+                ? "rgba(255, 255, 255, 0.13)"
+                : "rgba(255, 255, 255, 0.42)",
+            },
+            bloomStyle,
+          ]}
+        />
+      ) : null}
       <Animated.View style={[props.contentStyle, animatedStyle]}>{props.children}</Animated.View>
     </Pressable>
   );

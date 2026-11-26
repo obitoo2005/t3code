@@ -2,7 +2,6 @@ import * as Haptics from "expo-haptics";
 import { useGT } from "gt-react-native";
 import { memo, useEffect, useRef, useState } from "react";
 import {
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -15,6 +14,7 @@ import Svg, { Ellipse, Image as SvgImage, Line, Path, Polygon } from "react-nati
 
 import { playUiSound } from "../lib/uiSoundFx";
 import { AppActivityIndicator } from "./ui/AppActivityIndicator";
+import { AppleSheetModal } from "./ui/AppleSheetModal";
 import { SymbolView } from "./ui/AppSymbol";
 
 type AnnotatorTool = "pen" | "arrow" | "circle";
@@ -333,13 +333,11 @@ export const ImageAnnotatorModal = memo(function ImageAnnotatorModal(props: {
   const allStrokes = activeStroke ? [...strokes, activeStroke] : strokes;
 
   return (
-    <Modal
+    <AppleSheetModal
       visible={props.visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={props.onClose}
+      variant="fullscreen"
+      backdropColor="rgba(5, 5, 8, 0.98)"
+      onClose={props.onClose}
     >
       <View
         style={[
@@ -526,7 +524,7 @@ export const ImageAnnotatorModal = memo(function ImageAnnotatorModal(props: {
           </View>
         </View>
       </View>
-    </Modal>
+    </AppleSheetModal>
   );
 });
 

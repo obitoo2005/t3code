@@ -45,6 +45,7 @@ export function AndroidGlassPressable(props: {
   readonly style?: StyleProp<ViewStyle>;
   readonly contentStyle?: StyleProp<ViewStyle>;
   readonly scaleTo?: number;
+  readonly bloomRadius?: number;
 }) {
   return (
     <Pressable

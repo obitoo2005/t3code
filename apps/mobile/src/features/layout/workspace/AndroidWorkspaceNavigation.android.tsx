@@ -2,7 +2,7 @@ import { CommonActions, useNavigation } from "@react-navigation/native";
 import { requireNativeView } from "expo";
 import * as Haptics from "expo-haptics";
 import { msg, useGT, useMessages } from "gt-react-native";
-import { memo, useEffect } from "react";
+import { memo, useEffect, useRef } from "react";
 import {
   Keyboard,
   processColor,
@@ -12,10 +12,12 @@ import {
   type ViewProps,
 } from "react-native";
 import Animated, {
-  ReduceMotion,
+  Easing,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -26,6 +28,7 @@ import {
 import { SymbolView, type AppSymbolName } from "../../../components/ui/AppSymbol";
 import { useAndroidControlSizing } from "../../../components/ui/useAndroidControlSizing";
 import { useToolbarLayout } from "../../../components/ui/useToolbarLayout";
+import { IOS_SPRING_LIQUID_LENS, IOS_SPRING_SMOOTH } from "../../../lib/iosMotion";
 import { rootNavigationRef } from "../../../lib/rootNavigation";
 import { useWorkspaceConnectionState } from "../../../state/workspace";
 import { useSoftKeyboardShowing } from "../../keyboard/useSoftKeyboardShowing";
@@ -87,13 +90,6 @@ const TAB_TITLES = {
 };
 
 const NativeNavigation = requireNativeView<NativeNavigationProps>("T3WorkspaceNavigation");
-
-const INDICATOR_SPRING = {
-  damping: 24,
-  stiffness: 380,
-  mass: 0.72,
-  reduceMotion: ReduceMotion.System,
-};
 
 function nativeColor(value: string) {
   const color = processColor(value);
@@ -265,24 +261,73 @@ const FloatingGlassDock = memo(function FloatingGlassDock(props: {
   readonly onNewThread: () => void;
 }) {
   const innerPadding = 4;
-  // Derive inner width synchronously from pillWidth and animate the tab *index* (not pixel offset),
-  // so resizing the pill between Chats and Settings/Usage never overshoots or shifts off-center.
-  const innerWidth = Math.max(0, props.pillWidth - innerPadding * 2);
+  const tabCount = Math.max(1, props.tabs.length);
   const activeIndex = Math.max(0, props.tabs.indexOf(props.selectedTab));
-  const slotWidth = props.tabs.length > 0 ? innerWidth / props.tabs.length : 0;
+  const prevIndexRef = useRef(activeIndex);
+
   const activeIndexProgress = useSharedValue(activeIndex);
+  const animatedPillWidth = useSharedValue(props.pillWidth);
+  const composeProgress = useSharedValue(props.showsCompose ? 1 : 0);
+  const lensStretchX = useSharedValue(1);
+  const lensStretchY = useSharedValue(1);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated spring indicator index when the active tab changes
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated liquid lens glide and subtle jelly stretch when active tab changes
   useEffect(() => {
-    activeIndexProgress.set(withSpring(activeIndex, INDICATOR_SPRING));
-  }, [activeIndex, activeIndexProgress]);
+    const moved = prevIndexRef.current !== activeIndex;
+    prevIndexRef.current = activeIndex;
+    activeIndexProgress.set(withSpring(activeIndex, IOS_SPRING_LIQUID_LENS));
+    if (moved) {
+      lensStretchX.set(
+        withSequence(
+          withTiming(1.13, { duration: 90, easing: Easing.out(Easing.quad) }),
+          withSpring(1, IOS_SPRING_LIQUID_LENS),
+        ),
+      );
+      lensStretchY.set(
+        withSequence(
+          withTiming(0.91, { duration: 90, easing: Easing.out(Easing.quad) }),
+          withSpring(1, IOS_SPRING_LIQUID_LENS),
+        ),
+      );
+    }
+  }, [activeIndex, activeIndexProgress, lensStretchX, lensStretchY]);
 
-  const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: activeIndexProgress.value * slotWidth }],
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fluidly spring-morphs dock pill width and compose button visibility like iOS 26
+  useEffect(() => {
+    animatedPillWidth.set(withSpring(props.pillWidth, IOS_SPRING_SMOOTH));
+    composeProgress.set(withSpring(props.showsCompose ? 1 : 0, IOS_SPRING_SMOOTH));
+  }, [animatedPillWidth, composeProgress, props.pillWidth, props.showsCompose]);
+
+  const dockPillContainerStyle = useAnimatedStyle(() => ({
+    width: Math.max(0, animatedPillWidth.value),
+    height: props.dockHeight,
   }));
 
-  const activeLensBg = props.isDark ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.08)";
-  const activeLensBorder = props.isDark ? "rgba(255, 255, 255, 0.16)" : "rgba(255, 255, 255, 0.7)";
+  const indicatorStyle = useAnimatedStyle(() => {
+    const innerWidth = Math.max(0, animatedPillWidth.value - innerPadding * 2);
+    const slotWidth = innerWidth / tabCount;
+    return {
+      width: slotWidth,
+      transform: [
+        { translateX: activeIndexProgress.value * slotWidth },
+        { scaleX: lensStretchX.value },
+        { scaleY: lensStretchY.value },
+      ],
+    };
+  });
+
+  const composeWrapperStyle = useAnimatedStyle(() => {
+    const p = Math.min(1, Math.max(0, composeProgress.value));
+    return {
+      width: props.dockHeight * p,
+      marginLeft: FLOATING_TABS.gap * p,
+      opacity: Math.min(1, p * 1.25),
+      transform: [{ scale: 0.68 + 0.32 * p }],
+    };
+  });
+
+  const activeLensBg = props.isDark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.08)";
+  const activeLensBorder = props.isDark ? "rgba(255, 255, 255, 0.18)" : "rgba(255, 255, 255, 0.72)";
   const selectedIconColor = props.isDark ? "#ffffff" : "#111114";
   const unselectedIconColor = props.isDark ? "rgba(255, 255, 255, 0.56)" : "rgba(17, 17, 20, 0.52)";
 
@@ -292,81 +337,95 @@ const FloatingGlassDock = memo(function FloatingGlassDock(props: {
       style={{
         flexDirection: "row",
         alignItems: "center",
-        justifyContent: props.showsCompose ? "space-between" : "center",
-        gap: FLOATING_TABS.gap,
+        justifyContent: "center",
         width: "100%",
       }}
     >
-      <AndroidGlassSurface
-        radius={999}
-        tone="elevated"
-        style={{
-          width: props.pillWidth,
-          height: props.dockHeight,
-        }}
-      >
-        <View
-          accessibilityRole="tablist"
+      <Animated.View style={dockPillContainerStyle}>
+        <AndroidGlassSurface
+          radius={999}
+          tone="elevated"
           style={{
-            flex: 1,
-            flexDirection: "row",
-            alignItems: "center",
-            padding: innerPadding,
+            width: "100%",
+            height: props.dockHeight,
           }}
         >
-          {slotWidth > 0 ? (
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                {
-                  position: "absolute",
-                  left: innerPadding,
-                  top: innerPadding,
-                  bottom: innerPadding,
-                  width: slotWidth,
-                  borderRadius: 999,
-                  backgroundColor: activeLensBg,
-                  borderWidth: 1,
-                  borderColor: activeLensBorder,
-                },
-                indicatorStyle,
-              ]}
-            />
-          ) : null}
-          {props.tabs.map((tab) => {
-            const selected = tab === props.selectedTab;
-            return (
-              <AndroidGlassPressable
-                key={tab}
-                accessibilityRole="tab"
-                accessibilitySelected={selected}
-                accessibilityLabel={props.tabTitles[tab] ?? tab}
-                onPress={() => props.onSelectTab(tab)}
-                scaleTo={0.88}
-                style={{
-                  flex: 1,
-                  height: "100%",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-                contentStyle={{
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <SymbolView
-                  name={tabIconName(tab)}
-                  size={props.iconSize}
-                  tintColor={selected ? selectedIconColor : unselectedIconColor}
-                  type="monochrome"
-                />
-              </AndroidGlassPressable>
-            );
-          })}
-        </View>
-      </AndroidGlassSurface>
+          <View
+            accessibilityRole="tablist"
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              padding: innerPadding,
+            }}
+          >
+            {props.pillWidth > 0 ? (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  {
+                    position: "absolute",
+                    left: innerPadding,
+                    top: innerPadding,
+                    bottom: innerPadding,
+                    borderRadius: 999,
+                    backgroundColor: activeLensBg,
+                    borderWidth: 1,
+                    borderColor: activeLensBorder,
+                  },
+                  indicatorStyle,
+                ]}
+              />
+            ) : null}
+            {props.tabs.map((tab) => {
+              const selected = tab === props.selectedTab;
+              return (
+                <AndroidGlassPressable
+                  key={tab}
+                  accessibilityRole="tab"
+                  accessibilitySelected={selected}
+                  accessibilityLabel={props.tabTitles[tab] ?? tab}
+                  onPress={() => props.onSelectTab(tab)}
+                  scaleTo={0.87}
+                  bloomRadius={999}
+                  style={{
+                    flex: 1,
+                    height: "100%",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 999,
+                    overflow: "hidden",
+                  }}
+                  contentStyle={{
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <SymbolView
+                    name={tabIconName(tab)}
+                    size={props.iconSize}
+                    tintColor={selected ? selectedIconColor : unselectedIconColor}
+                    type="monochrome"
+                  />
+                </AndroidGlassPressable>
+              );
+            })}
+          </View>
+        </AndroidGlassSurface>
+      </Animated.View>
 
-      {props.showsCompose ? (
+      <Animated.View
+        pointerEvents={props.showsCompose ? "auto" : "none"}
+        style={[
+          {
+            height: props.dockHeight,
+            overflow: "hidden",
+            alignItems: "center",
+            justifyContent: "center",
+          },
+          composeWrapperStyle,
+        ]}
+      >
         <AndroidGlassSurface
           radius={999}
           tone="elevated"
@@ -380,12 +439,15 @@ const FloatingGlassDock = memo(function FloatingGlassDock(props: {
           <AndroidGlassPressable
             accessibilityLabel={props.newThreadTitle}
             onPress={props.onNewThread}
-            scaleTo={0.9}
+            scaleTo={0.89}
+            bloomRadius={999}
             style={{
               width: props.dockHeight,
               height: props.dockHeight,
               alignItems: "center",
               justifyContent: "center",
+              borderRadius: 999,
+              overflow: "hidden",
             }}
             contentStyle={{
               alignItems: "center",
@@ -400,7 +462,7 @@ const FloatingGlassDock = memo(function FloatingGlassDock(props: {
             />
           </AndroidGlassPressable>
         </AndroidGlassSurface>
-      ) : null}
+      </Animated.View>
     </View>
   );
 });

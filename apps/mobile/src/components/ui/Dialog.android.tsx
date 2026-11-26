@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { msg, useGT } from "gt-react-native";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -13,8 +13,6 @@ import {
   type AlertButton,
 } from "react-native";
 import Animated, {
-  Easing,
-  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -24,6 +22,13 @@ import Animated, {
 import { useAppearancePreferences } from "../../features/settings/appearance/AppearancePreferencesProvider";
 import { useScaledTextRole } from "../../features/settings/appearance/useScaledTextRole";
 import { m } from "../../i18n/messages";
+import {
+  IOS_EXIT_UNMOUNT_MS,
+  IOS_SPRING_DIALOG,
+  IOS_TIMING_BACKDROP_IN,
+  IOS_TIMING_BACKDROP_OUT,
+  IOS_TIMING_EXIT,
+} from "../../lib/iosMotion";
 import { themeColorWithContrast } from "../../lib/mobileTheme";
 import { AndroidGlassSurface } from "./AndroidGlassSurface.android";
 import { SymbolView } from "./AppSymbol";
@@ -31,19 +36,6 @@ import { AppText } from "./AppText";
 import type { ConfirmDialogRequest, TextInputDialogRequest } from "./Dialog.types";
 
 export type { ConfirmDialogRequest, TextInputDialogRequest } from "./Dialog.types";
-
-const DIALOG_SPRING = {
-  damping: 26,
-  stiffness: 420,
-  mass: 0.72,
-  reduceMotion: ReduceMotion.System,
-};
-
-const BACKDROP_TIMING = {
-  duration: 160,
-  easing: Easing.out(Easing.cubic),
-  reduceMotion: ReduceMotion.System,
-};
 
 type AlertRequest = {
   readonly title: Parameters<typeof Alert.alert>[0];
@@ -123,6 +115,28 @@ export function prompt(request: TextInputDialogRequest): void {
 export function Host() {
   const gt = useGT();
   const current = useSyncExternalStore(subscribe, getPresented, getPresented);
+  const [exiting, setExiting] = useState<PresentedDialog | null>(null);
+  const prevCurrentRef = useRef<PresentedDialog | null>(current);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps dismissed dialog mounted briefly so the iOS zoom-out exit animation finishes smoothly
+  useEffect(() => {
+    const prev = prevCurrentRef.current;
+    prevCurrentRef.current = current;
+    if (current !== null) {
+      setExiting(null);
+      return;
+    }
+    if (prev !== null) {
+      setExiting(prev);
+      const timer = setTimeout(() => {
+        setExiting((existing) => (existing?.id === prev.id ? null : existing));
+      }, IOS_EXIT_UNMOUNT_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [current]);
+
+  const active = current ?? exiting;
+  const isClosing = current === null && exiting !== null;
 
   const handleCancel = () => {
     if (!current || !dismiss(current.id)) return;
@@ -138,19 +152,20 @@ export function Host() {
     }
   };
 
-  if (current?.kind === "alert") {
+  if (active?.kind === "alert") {
     return (
       <DialogPresentation
-        key={current.id}
+        key={active.id}
+        closing={isClosing}
         request={{
-          title: current.request.title ?? "",
-          message: current.request.message ?? undefined,
+          title: active.request.title ?? "",
+          message: active.request.message ?? undefined,
           confirmText: "",
         }}
-        alertActions={current.request.buttons ?? [{ text: gt("OK") }]}
-        dismissable={current.request.options?.cancelable ?? false}
+        alertActions={active.request.buttons ?? [{ text: gt("OK") }]}
+        dismissable={active.request.options?.cancelable ?? false}
         onAlertAction={(action) => {
-          if (!dismiss(current.id)) return;
+          if (!current || !dismiss(current.id)) return;
           action.onPress?.();
         }}
         onCancel={handleCancel}
@@ -159,14 +174,13 @@ export function Host() {
     );
   }
 
-  return current ? (
+  return active ? (
     <DialogPresentation
-      key={current.id}
-      request={current.request}
-      inputInitialValue={
-        current.kind === "text-input" ? current.request.initialValue : undefined
-      }
-      inputPlaceholder={current.kind === "text-input" ? current.request.placeholder : undefined}
+      key={active.id}
+      closing={isClosing}
+      request={active.request}
+      inputInitialValue={active.kind === "text-input" ? active.request.initialValue : undefined}
+      inputPlaceholder={active.kind === "text-input" ? active.request.placeholder : undefined}
       onCancel={handleCancel}
       onConfirm={handleConfirm}
     />
@@ -184,17 +198,22 @@ function DialogPresentation(props: DialogPresentationProps) {
   const progress = useSharedValue(0);
   const backdropOpacity = useSharedValue(0);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated entrance spring when the Liquid Glass dialog mounts
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives Reanimated spring entrance and smooth zoom-out exit on the Liquid Glass dialog
   useEffect(() => {
-    progress.set(withSpring(1, DIALOG_SPRING));
-    backdropOpacity.set(withTiming(1, BACKDROP_TIMING));
-  }, [progress, backdropOpacity]);
+    if (props.closing) {
+      progress.set(withTiming(0, IOS_TIMING_EXIT));
+      backdropOpacity.set(withTiming(0, IOS_TIMING_BACKDROP_OUT));
+      return;
+    }
+    progress.set(withSpring(1, IOS_SPRING_DIALOG));
+    backdropOpacity.set(withTiming(1, IOS_TIMING_BACKDROP_IN));
+  }, [backdropOpacity, progress, props.closing]);
 
   const cardAnimatedStyle = useAnimatedStyle(() => {
     const p = progress.value;
     return {
       opacity: Math.min(1, p * 1.4),
-      transform: [{ scale: 0.92 + 0.08 * p }],
+      transform: [{ scale: 0.90 + 0.10 * p }],
     };
   });
 
@@ -287,6 +306,7 @@ function DialogPresentation(props: DialogPresentationProps) {
     >
       <KeyboardAvoidingView
         behavior="padding"
+        pointerEvents={props.closing ? "none" : "auto"}
         style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}
       >
         <Animated.View
@@ -430,6 +450,7 @@ function DialogPresentation(props: DialogPresentationProps) {
 }
 
 interface DialogPresentationProps {
+  readonly closing?: boolean;
   readonly alertActions?: readonly AlertButton[];
   readonly onAlertAction?: (action: AlertButton) => void;
   readonly dismissable?: boolean;

@@ -97,8 +97,8 @@ const COMPACT_SLIDE_ROUTES = new Set([
 // Split view: Thread, PullRequest, and a Settings page picked from the list swap the detail pane
 // rather than stack, so they don't animate. Pages opened from a Settings page crossfade inside the
 // pane's card; the default push edge-extends the incoming page, bleeding a stripe beside the list.
-// Compact phones: use crisp horizontal slide_from_right on pushed pages so they never transparently
-// cross-fade over the Home list (keeping Settings tab instant via its own `animation: "none"`).
+// Compact phones: use Apple-tuned ios_from_right (full-width push over -28% dimmed parallax
+// background, reversed smoothly on Back) across pushed pages and Settings sub-screens.
 export function androidWorkspaceDestinationAnimation(
   route: { readonly key: string; readonly name: string },
   routes: readonly { readonly key: string; readonly name: string }[],
@@ -107,9 +107,10 @@ export function androidWorkspaceDestinationAnimation(
   if (!usesSplitView) {
     if (
       COMPACT_SLIDE_ROUTES.has(route.name) ||
+      route.name === "Connections" ||
       (route.name !== "Settings" && isSettingsRoute(route.name))
     ) {
-      return "slide_from_right" as const;
+      return "ios_from_right" as const;
     }
     return undefined;
   }

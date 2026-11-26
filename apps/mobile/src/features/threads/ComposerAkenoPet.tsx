@@ -31,8 +31,7 @@ const AKENO_PET_SOURCES: Readonly<Record<ComposerAkenoPose, ImageSource>> = {
   working: require("../../../assets/akeno-pet-working.webp"),
   happy: require("../../../assets/akeno-pet-happy.webp"),
   sleepy: require("../../../assets/akeno-pet-sleepy.webp"),
-  // Swap to akeno-pet-picked.webp once a custom lifted/dangling sprite is provided.
-  picked: require("../../../assets/akeno-pet-happy.webp"),
+  picked: require("../../../assets/akeno-pet-picked.webp"),
 };
 
 const EDGE_MARGIN = 18;

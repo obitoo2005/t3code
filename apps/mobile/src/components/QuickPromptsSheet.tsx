@@ -2,9 +2,6 @@ import * as Haptics from "expo-haptics";
 import { useGT } from "gt-react-native";
 import { memo, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +16,7 @@ import { playUiSound } from "../lib/uiSoundFx";
 import { uuidv4 } from "../lib/uuid";
 import { useSavedQuickPrompts } from "../state/use-rias-enhancements";
 import { AndroidGlassPressable, AndroidGlassSurface } from "./ui/AndroidGlassSurface";
+import { AppleSheetModal } from "./ui/AppleSheetModal";
 import { SymbolView } from "./ui/AppSymbol";
 import { AppText as Text } from "./ui/AppText";
 
@@ -34,8 +32,6 @@ export const QuickPromptsSheet = memo(function QuickPromptsSheet(props: {
   const [creating, setCreating] = useState(false);
   const [titleInput, setTitleInput] = useState("");
   const [promptInput, setPromptInput] = useState("");
-
-  if (!props.visible) return null;
 
   const isDark = themeAppearance === "dark";
   const accent =
@@ -78,39 +74,33 @@ export const QuickPromptsSheet = memo(function QuickPromptsSheet(props: {
   };
 
   return (
-    <Modal
+    <AppleSheetModal
       visible={props.visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={props.onClose}
+      onClose={props.onClose}
+      variant="sheet"
+      sheetStyle={styles.sheetWrap}
+      containerStyle={[
+        styles.backdrop,
+        { paddingBottom: Math.max(insets.bottom, 12) + 6 },
+      ]}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      <AndroidGlassSurface
+        tone="menu"
+        radius={30}
         style={[
-          styles.backdrop,
-          { paddingBottom: Math.max(insets.bottom, 12) + 6 },
+          styles.sheet,
+          {
+            boxShadow: [
+              {
+                offsetX: 0,
+                offsetY: 12,
+                blurRadius: 34,
+                color: isDark ? "rgba(0, 0, 0, 0.56)" : "rgba(0, 0, 0, 0.16)",
+              },
+            ],
+          },
         ]}
       >
-        <Pressable style={StyleSheet.absoluteFill} onPress={props.onClose} />
-        <AndroidGlassSurface
-          tone="menu"
-          radius={30}
-          style={[
-            styles.sheet,
-            {
-              boxShadow: [
-                {
-                  offsetX: 0,
-                  offsetY: 12,
-                  blurRadius: 34,
-                  color: isDark ? "rgba(0, 0, 0, 0.56)" : "rgba(0, 0, 0, 0.16)",
-                },
-              ],
-            },
-          ]}
-        >
           <View
             style={[
               styles.handle,
@@ -315,20 +305,18 @@ export const QuickPromptsSheet = memo(function QuickPromptsSheet(props: {
             )}
           </ScrollView>
         </AndroidGlassSurface>
-      </KeyboardAvoidingView>
-    </Modal>
+    </AppleSheetModal>
   );
 });
 
 const styles = StyleSheet.create({
   backdrop: {
-    flex: 1,
-    justifyContent: "flex-end",
     paddingHorizontal: 12,
-    backgroundColor: "rgba(0, 0, 0, 0.56)",
+  },
+  sheetWrap: {
+    maxHeight: "78%",
   },
   sheet: {
-    maxHeight: "76%",
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 14,
