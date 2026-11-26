@@ -16,7 +16,13 @@ import { ScreenContent } from "../../components/ui/ScreenContent";
 import { RefreshControl } from "../../components/ui/RefreshControl";
 import { AppText as Text } from "../../components/ui/AppText";
 import { COMPANION_MOOD_SOURCES, isLateNightHour } from "../../components/AkenoMascot";
+import { reshuffleSessionAvatars } from "../../components/SessionAvatarIcon";
 import { useAppActive, useReduceMotionEnabled } from "../../lib/appState";
+import {
+  createShakeDetectorState,
+  evaluateShakeSample,
+} from "../../lib/riasEnhancements";
+import { playUiSound } from "../../lib/uiSoundFx";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useActiveNewTask } from "../../state/active-new-task";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -297,6 +303,42 @@ export function HomeScreen(props: HomeScreenProps) {
   const sidebarSurface = usePaneRole() === "sidebar" && primaryColumn !== null;
   const contentBackground = sidebarSurface ? "bg-drawer" : "bg-screen";
   const containerClassName = cn("flex-1", contentBackground);
+  const appActive = useAppActive();
+  const { shakeToShuffleEnabled } = useAppearancePreferences();
+  const shakeDetectorRef = useRef(createShakeDetectorState());
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to accelerometer while Home is visible to reshuffle chat avatars on a quick phone shake
+  useEffect(() => {
+    if (Platform.OS !== "android" || !props.visible || !appActive || !shakeToShuffleEnabled) {
+      return;
+    }
+    let cancelled = false;
+    let subscription: { remove: () => void } | null = null;
+    void (async () => {
+      try {
+        const { Accelerometer } = await import("expo-sensors");
+        const available = await Accelerometer.isAvailableAsync();
+        if (!available || cancelled) return;
+        Accelerometer.setUpdateInterval(110);
+        subscription = Accelerometer.addListener((sample) => {
+          const result = evaluateShakeSample(shakeDetectorRef.current, sample, Date.now());
+          shakeDetectorRef.current = result.next;
+          if (result.triggered) {
+            reshuffleSessionAvatars();
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            playUiSound("shuffle");
+          }
+        });
+      } catch {
+        // Ignore unavailable or restricted motion sensors.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+    };
+  }, [appActive, props.visible, shakeToShuffleEnabled]);
+
   const columnMetrics = useNativeColumnLayoutMetrics();
   const activeNewTask = useActiveNewTask();
   const sidebarRowThreadKey = useSidebarRowThreadKey(primaryColumn?.selectedThreadKey ?? null);

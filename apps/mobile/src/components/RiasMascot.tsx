@@ -14,6 +14,7 @@ import Animated, {
 
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
+import { getTimeOfDayGreeting } from "../lib/riasEnhancements";
 import {
   COMPANION_MOOD_SOURCES,
   isLateNightHour,
@@ -75,6 +76,7 @@ export const RiasMascot = memo(function RiasMascot(props: {
   const { mascotPreference } = useAppearancePreferences();
   const [randomPick] = useState<CompanionCharacter>(() => pickAlternatingCompanion());
   const [lateNight] = useState(() => isLateNightHour());
+  const [greeting] = useState(() => getTimeOfDayGreeting());
   const [tapStep, setTapStep] = useState(0);
   const scale = useSharedValue(1);
   const tilt = useSharedValue(0);
@@ -170,12 +172,22 @@ export const RiasMascot = memo(function RiasMascot(props: {
         </Animated.View>
       </Pressable>
       {props.showCaption ? (
-        <Text
-          textRole="footnote"
-          className="mt-1.5 text-center font-t3-medium text-foreground-muted"
-        >
-          {entry.caption}
-        </Text>
+        <View className="mt-1.5 items-center">
+          <Text
+            textRole="footnote"
+            className="text-center font-t3-semibold text-foreground"
+          >
+            {tapStep === 0 ? greeting.headline : entry.caption}
+          </Text>
+          {tapStep === 0 ? (
+            <Text
+              textRole="caption"
+              className="mt-0.5 text-center text-foreground-muted"
+            >
+              {entry.caption}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
     </View>
   );

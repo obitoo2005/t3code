@@ -26,6 +26,7 @@ import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SettingsRow } from "./components/SettingsRow";
+import { SettingsCompanionCard } from "./components/SettingsCompanionCard";
 import { SettingsSection, SettingsSidebarContext } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
 import type { SettingsPageTarget } from "./components/settings-page-targets";
@@ -206,6 +207,7 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[] 
               : Math.max(Math.max(insets.bottom, 18) + 18, workspace?.bottomClearance ?? 0),
         }}
       >
+        {Platform.OS === "android" && !query.trim() ? <SettingsCompanionCard /> : null}
         {sections.length ? (
           sections.map((section, index) => (
             <SettingsSection key={section.title ?? `untitled-${index}`} title={section.title}>

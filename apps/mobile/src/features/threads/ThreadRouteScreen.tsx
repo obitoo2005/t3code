@@ -1052,6 +1052,7 @@ function ThreadRouteContent(
                 inspectorMode={inspectorMode}
                 onOpenFilesInspector={handleOpenFilesInspector}
                 onReturnToThread={props.onReturnToThread}
+                feed={composer.selectedThreadFeed}
               />
             )
           }

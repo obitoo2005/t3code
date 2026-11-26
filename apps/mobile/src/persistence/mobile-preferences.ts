@@ -24,6 +24,7 @@ import type { ComposerEnterBehavior } from "../lib/composerEnterBehavior";
 import type { FollowUpBehavior } from "../lib/followUpBehavior";
 import { isMicrophoneKind, type MicrophoneEntry } from "../lib/microphonePriority";
 import { MOBILE_THEME_IDS, type MobileThemeId, type MobileThemeMode } from "../lib/mobileTheme";
+import type { DailyActivityStats, SavedQuickPrompt } from "../lib/riasEnhancements";
 import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
 import { MobileStorageDecodeError, MobileStorageEncodeError } from "./mobile-storage";
@@ -157,6 +158,10 @@ export interface Preferences {
   readonly soundFxEnabled?: boolean;
   readonly mascotPreference?: "rias" | "akeno" | "random";
   readonly composerPet?: "akeno" | "rei" | "off";
+  readonly shakeToShuffleEnabled?: boolean;
+  readonly savedQuickPrompts?: ReadonlyArray<SavedQuickPrompt>;
+  readonly starredMessagesByThread?: Readonly<Record<string, ReadonlyArray<string>>>;
+  readonly dailyActivityStats?: DailyActivityStats;
   /** Unset means on: crash reports are sent unless the user turns them off. */
   readonly crashReportsEnabled?: boolean;
   /** Unset means on: connection traces are sent unless the user turns them off. */
@@ -259,6 +264,10 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     soundFxEnabled?: boolean;
     mascotPreference?: "rias" | "akeno" | "random";
     composerPet?: "akeno" | "rei" | "off";
+    shakeToShuffleEnabled?: boolean;
+    savedQuickPrompts?: ReadonlyArray<SavedQuickPrompt>;
+    starredMessagesByThread?: Readonly<Record<string, ReadonlyArray<string>>>;
+    dailyActivityStats?: DailyActivityStats;
     crashReportsEnabled?: boolean;
     connectionTracesEnabled?: boolean;
     connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
@@ -375,6 +384,55 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     parsed.composerPet === "off"
   ) {
     preferences.composerPet = parsed.composerPet;
+  }
+  if (typeof parsed.shakeToShuffleEnabled === "boolean") {
+    preferences.shakeToShuffleEnabled = parsed.shakeToShuffleEnabled;
+  }
+  if (Array.isArray(parsed.savedQuickPrompts)) {
+    preferences.savedQuickPrompts = parsed.savedQuickPrompts.flatMap((entry): SavedQuickPrompt[] => {
+      if (
+        typeof entry !== "object" ||
+        entry === null ||
+        typeof entry.id !== "string" ||
+        typeof entry.title !== "string" ||
+        typeof entry.prompt !== "string" ||
+        entry.prompt.trim().length === 0
+      ) {
+        return [];
+      }
+      return [{ id: entry.id, title: entry.title, prompt: entry.prompt }];
+    });
+  }
+  if (
+    typeof parsed.starredMessagesByThread === "object" &&
+    parsed.starredMessagesByThread !== null &&
+    !Array.isArray(parsed.starredMessagesByThread)
+  ) {
+    const starred: Record<string, ReadonlyArray<string>> = {};
+    for (const [key, value] of Object.entries(parsed.starredMessagesByThread)) {
+      if (Array.isArray(value)) {
+        const ids = value.filter((id): id is string => typeof id === "string" && id.length > 0);
+        if (ids.length > 0) starred[key] = ids;
+      }
+    }
+    preferences.starredMessagesByThread = starred;
+  }
+  if (
+    typeof parsed.dailyActivityStats === "object" &&
+    parsed.dailyActivityStats !== null &&
+    typeof parsed.dailyActivityStats.date === "string" &&
+    typeof parsed.dailyActivityStats.lastActiveDate === "string" &&
+    typeof parsed.dailyActivityStats.turnsToday === "number" &&
+    typeof parsed.dailyActivityStats.streakDays === "number" &&
+    typeof parsed.dailyActivityStats.totalTurns === "number"
+  ) {
+    preferences.dailyActivityStats = {
+      date: parsed.dailyActivityStats.date,
+      lastActiveDate: parsed.dailyActivityStats.lastActiveDate,
+      turnsToday: parsed.dailyActivityStats.turnsToday,
+      streakDays: parsed.dailyActivityStats.streakDays,
+      totalTurns: parsed.dailyActivityStats.totalTurns,
+    };
   }
   if (typeof parsed.crashReportsEnabled === "boolean") {
     preferences.crashReportsEnabled = parsed.crashReportsEnabled;

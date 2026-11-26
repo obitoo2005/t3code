@@ -25,6 +25,7 @@ import {
   type TextSelectionMenuConfig,
 } from "react-native-enriched-markdown";
 import { codeFenceRenderer } from "./codeBlockMarkdown";
+import { resolveHighlightLanguage } from "../lib/highlightLanguage";
 import { HighlightedCodeBlock } from "./HighlightedCodeBlock";
 import { MermaidCodeBlock } from "./MermaidCodeBlock";
 import type { SelectableMarkdownTextProps } from "./SelectableMarkdownText.types";
@@ -216,12 +217,16 @@ function codeBlockElement(
       />
     ) : undefined;
   }
-  if (renderer.kind === "highlight" && markdownStyle.codeBlock) {
+  if ((renderer.kind === "highlight" || Platform.OS === "android") && markdownStyle.codeBlock) {
     return (
       <HighlightedCodeBlock
         code={block.code}
         fence={block.language}
-        language={renderer.language}
+        language={
+          renderer.kind === "highlight"
+            ? renderer.language
+            : resolveHighlightLanguage({ language: block.language })
+        }
         complete={block.isComplete}
         scheme={scheme}
         textStyle={textStyle}

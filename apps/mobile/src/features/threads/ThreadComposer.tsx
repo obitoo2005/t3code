@@ -37,14 +37,30 @@ import {
   composerAttachmentsStillUploading,
   composerAttachmentUploadsAtom,
 } from "../../state/composer-attachment-uploads";
-import Animated, { FadeIn, FadeOut, ReduceMotion } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeOut,
+  ReduceMotion,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from "react-native-reanimated";
+import { useReduceMotionEnabled } from "../../lib/appState";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { themeColorWithAlpha } from "../../lib/mobileTheme";
 import { playUiSound } from "../../lib/uiSoundFx";
+import { ImageAnnotatorModal } from "../../components/ImageAnnotatorModal";
+import { QuickPromptsSheet } from "../../components/QuickPromptsSheet";
+import { useDailyActivityStats } from "../../state/use-rias-enhancements";
+import { registerActiveThreadComposerHandlers } from "./activeThreadComposerBridge";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import {
+  captureComposerDraftInsertion,
   getComposerDraftSnapshot,
+  insertComposerDraftText,
   setComposerDraftText,
   composerContextImportsAtom,
   countComposerDraftAttachmentsAfterSelection,
@@ -215,25 +231,111 @@ const FOLLOW_UP_ACTION_SUBTITLE = {
   restart: msg("Start the turn over with this message"),
 } as const;
 
+const SEND_BURST_PARTICLES = [
+  { glyph: "✦", dx: -22, dy: -20, delay: 0, size: 11 },
+  { glyph: "♥", dx: 0, dy: -26, delay: 14, size: 10 },
+  { glyph: "✦", dx: 20, dy: -18, delay: 8, size: 11 },
+  { glyph: "♥", dx: -24, dy: 4, delay: 18, size: 9.5 },
+  { glyph: "✦", dx: 22, dy: 6, delay: 22, size: 10 },
+  { glyph: "✦", dx: -10, dy: -28, delay: 26, size: 9.5 },
+] as const;
+
+function SendBurstParticle(props: {
+  readonly glyph: string;
+  readonly color: string;
+  readonly dx: number;
+  readonly dy: number;
+  readonly delay: number;
+  readonly size: number;
+}) {
+  const progress = useSharedValue(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fires one-shot send button micro star-burst particle on mount
+  useEffect(() => {
+    progress.set(
+      withDelay(
+        props.delay,
+        withTiming(1, {
+          duration: 480,
+          easing: Easing.out(Easing.cubic),
+          reduceMotion: ReduceMotion.System,
+        }),
+      ),
+    );
+  }, [progress, props.delay]);
+  const style = useAnimatedStyle(() => {
+    const p = progress.value;
+    const opacity = p < 0.2 ? p / 0.2 : Math.max(0, 1 - (p - 0.2) / 0.8);
+    const scale = p < 0.28 ? 0.45 + p * 2.8 : 1.2 - (p - 0.28) * 0.85;
+    return {
+      opacity,
+      transform: [{ translateX: props.dx * p }, { translateY: props.dy * p }, { scale }],
+    };
+  });
+  return (
+    <Animated.Text
+      accessible={false}
+      importantForAccessibility="no"
+      style={[
+        {
+          position: "absolute",
+          color: props.color,
+          fontSize: props.size,
+          fontWeight: "700",
+        },
+        style,
+      ]}
+    >
+      {props.glyph}
+    </Animated.Text>
+  );
+}
+
 function SendActionButton(props: {
   readonly size?: "regular" | "large";
   readonly accessibilityLabel: string;
   readonly presentation: ComposerSendPresentation;
   readonly disabled: boolean;
   readonly onSend: (followUp?: ActiveTurnComposerAction) => void;
+  readonly burstKey?: number;
+  readonly burstVisible?: boolean;
+  readonly burstColor?: string;
 }) {
   const { presentation } = props;
   const gt = useGT();
   const m = useMessages();
   const button = (
-    <ComposerActionButton
-      accessibilityLabel={props.accessibilityLabel}
-      size={props.size}
-      icon={presentation.icon}
-      variant="primary"
-      disabled={props.disabled}
-      onPress={() => props.onSend()}
-    />
+    <View style={{ position: "relative", overflow: "visible" }}>
+      {Platform.OS === "android" && props.burstVisible ? (
+        <View
+          key={props.burstKey}
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            inset: 0,
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "visible",
+            zIndex: 20,
+          }}
+        >
+          {SEND_BURST_PARTICLES.map((particle, index) => (
+            <SendBurstParticle
+              key={index}
+              {...particle}
+              color={index % 2 === 0 ? (props.burstColor ?? "#F43F5E") : "#FFFFFF"}
+            />
+          ))}
+        </View>
+      ) : null}
+      <ComposerActionButton
+        accessibilityLabel={props.accessibilityLabel}
+        size={props.size}
+        icon={presentation.icon}
+        variant="primary"
+        disabled={props.disabled}
+        onPress={() => props.onSend()}
+      />
+    </View>
   );
   if (!presentation.offersFollowUpChoice || presentation.action === null || props.disabled) {
     return button;
@@ -264,7 +366,23 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const gt = useGT();
   const messages = useMessages();
   const project = useProject(scopeProjectRef(props.environmentId, props.selectedThread.projectId));
-  const { themeVariables: materialTheme, composerPet } = useAppearancePreferences();
+  const { themeVariables: materialTheme, composerPet, themeId } = useAppearancePreferences();
+  const reducedMotion = useReduceMotionEnabled();
+  const { recordTurn } = useDailyActivityStats();
+  const [quickPromptsOpen, setQuickPromptsOpen] = useState(false);
+  const [annotatingDraft, setAnnotatingDraft] = useState<{
+    readonly id: string;
+    readonly uri: string;
+  } | null>(null);
+  const [sendBurstKey, setSendBurstKey] = useState(0);
+  const [sendBurstVisible, setSendBurstVisible] = useState(false);
+  const sendBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sendBurstColor =
+    themeId === "akeno-violet"
+      ? "#C084FC"
+      : themeId === "rias-crimson"
+        ? "#FB7185"
+        : "#60A5FA";
   const [composerStageWidth, setComposerStageWidth] = useState(0);
   const composerPanel = materialTheme["--color-composer-panel"];
   const navigation = useNavigation();
@@ -513,7 +631,44 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
 
   // A pending sheet presentation or focus restore has no composer left to act on.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- disposes the pending settings sheet presentation and focus restore on unmount
-  useEffect(() => () => disposeSettingsSheetPresentation(), []);
+  useEffect(
+    () => () => {
+      disposeSettingsSheetPresentation();
+      if (sendBurstTimerRef.current !== null) clearTimeout(sendBurstTimerRef.current);
+    },
+    [],
+  );
+
+  const insertDraftSnippet = useEffectEvent((snippet: string) => {
+    const trimmed = snippet.trim();
+    if (!trimmed) return;
+    const target = captureComposerDraftInsertion(composerDraftKey);
+    const prefix =
+      target.start > 0 && !/\s$/.test(target.text.slice(0, target.start)) ? "\n" : "";
+    insertComposerDraftText(composerDraftKey, `${prefix}${trimmed}\n`, target);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  });
+
+  const attachAnnotatedImage = useEffectEvent(
+    async (uri: string, replaceAttachmentId?: string): Promise<boolean> => {
+      const pasted = await props.onNativePasteImages([uri]);
+      if (pasted && replaceAttachmentId) {
+        props.onRemoveDraftImage(replaceAttachmentId);
+      }
+      return pasted;
+    },
+  );
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers active composer handlers so fullscreen code quotes and annotated images land in this draft
+  useEffect(() => {
+    if (props.hidden) return;
+    return registerActiveThreadComposerHandlers({
+      draftKey: composerDraftKey,
+      insertText: (text) => insertDraftSnippet(text),
+      attachImageUri: (uri, replaceAttachmentId) =>
+        attachAnnotatedImage(uri, replaceAttachmentId),
+    });
+  }, [composerDraftKey, props.hidden]);
 
   const onPressPreview = (source: FilePreviewSource) => {
     wasExpandedBeforePreviewRef.current = isFocused;
@@ -589,6 +744,16 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     }
     if (sent.value === null) return;
     playUiSound("send");
+    recordTurn();
+    if (Platform.OS === "android" && !reducedMotion) {
+      setSendBurstKey((value) => value + 1);
+      setSendBurstVisible(true);
+      if (sendBurstTimerRef.current !== null) clearTimeout(sendBurstTimerRef.current);
+      sendBurstTimerRef.current = setTimeout(() => {
+        setSendBurstVisible(false);
+        sendBurstTimerRef.current = null;
+      }, 560);
+    }
     // Arm after send so preference reads and native Activity startup do not delay tap-frame feedback.
     armAgentAwarenessLiveActivityForLocalWork({
       environmentId: props.environmentId,
@@ -674,6 +839,11 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
             onRemove={isSubmissionLocked ? () => undefined : props.onRemoveDraftImage}
             onPressPreview={isSubmissionLocked ? undefined : onPressPreview}
             onPressVideo={isSubmissionLocked ? undefined : onPressVideo}
+            onAnnotateImage={
+              isSubmissionLocked
+                ? undefined
+                : (attachment, uri) => setAnnotatingDraft({ id: attachment.id, uri })
+            }
             onPressDocument={
               isSubmissionLocked
                 ? undefined
@@ -871,6 +1041,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
           ) : null}
           <ComposerSurface
           animateLayout={false}
+          working={props.activeThreadBusy}
           style={{
             borderRadius: usesLargeControls ? 31 : 27,
             borderCurve: "circular",
@@ -916,6 +1087,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                 supportsFiles={props.serverConfig !== null}
                 onPickMedia={props.onPickDraftMedia}
                 onPickFiles={props.onPickDraftFiles}
+                onOpenQuickPrompts={
+                  Platform.OS === "android" ? () => setQuickPromptsOpen(true) : undefined
+                }
               />
               <Animated.View
                 className="min-w-0 flex-1"
@@ -1147,6 +1321,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     presentation={sendPresentation}
                     disabled={!canSend}
                     onSend={handleSend}
+                    burstKey={sendBurstKey}
+                    burstVisible={sendBurstVisible}
+                    burstColor={sendBurstColor}
                   />
                 )}
               </View>
@@ -1233,6 +1410,26 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
 
       <VideoPreviewModal source={previewVideo} onRequestClose={closePreview} />
       <FilePreviewModal source={previewFile} onRequestClose={closePreview} />
+      {Platform.OS === "android" ? (
+        <>
+          <QuickPromptsSheet
+            visible={quickPromptsOpen}
+            onClose={() => setQuickPromptsOpen(false)}
+            onSelectPrompt={(prompt) => insertDraftSnippet(prompt)}
+          />
+          <ImageAnnotatorModal
+            visible={annotatingDraft !== null}
+            imageUri={annotatingDraft?.uri ?? null}
+            confirmLabel={gt("Save")}
+            onClose={() => setAnnotatingDraft(null)}
+            onConfirm={async (annotatedUri) => {
+              const targetId = annotatingDraft?.id;
+              await attachAnnotatedImage(annotatedUri, targetId);
+              setAnnotatingDraft(null);
+            }}
+          />
+        </>
+      ) : null}
     </Animated.View>
   );
 };

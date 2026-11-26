@@ -1,8 +1,10 @@
 import { msg, useGT, useMessages } from "gt-react-native";
-import { useState } from "react";
-import { Pressable, ScrollView, Text } from "react-native";
+import { useRef, useState } from "react";
+import { Platform, Pressable, ScrollView, Text } from "react-native";
 import type { MarkdownStyle } from "react-native-enriched-markdown";
 
+import { FullscreenCodeModal } from "../components/FullscreenCodeModal";
+import { openShareCard } from "../components/ShareCardModal";
 import { Menu } from "../components/ui/Menu";
 import { useMarkdownCodeHighlight } from "../features/threads/markdownCodeHighlightState";
 import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
@@ -54,6 +56,8 @@ export function HighlightedCodeBlock(props: {
   const gt = useGT();
   const resolve = useMessages();
   const [wrapped, setWrapped] = useState(false);
+  const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const lastTapRef = useRef(0);
   const lines = useMarkdownCodeHighlight({
     code,
     language: props.language,
@@ -61,6 +65,19 @@ export function HighlightedCodeBlock(props: {
     enabled: props.complete,
   });
   const fence = props.fence.toLowerCase();
+  const displayLabel =
+    FENCE_DISPLAY_NAMES[fence] ??
+    (fence.length > 0 ? fence.charAt(0).toUpperCase() + fence.slice(1) : gt("Code"));
+  const handleCodePress = () => {
+    if (Platform.OS !== "android") return;
+    const now = Date.now();
+    if (now - lastTapRef.current < 320) {
+      lastTapRef.current = 0;
+      setFullscreenOpen(true);
+      return;
+    }
+    lastTapRef.current = now;
+  };
   const text = (
     // Not selectable: as in the native block, a long-press opens the copy menu instead.
     <Text
@@ -98,43 +115,80 @@ export function HighlightedCodeBlock(props: {
         );
       }}
     >
-      <Pressable style={{ padding: codeStyle.padding }}>{text}</Pressable>
+      <Pressable onPress={handleCodePress} style={{ padding: codeStyle.padding }}>
+        {text}
+      </Pressable>
     </Menu>
   );
   return (
-    <CodeBlockFrame
-      label={FENCE_DISPLAY_NAMES[fence] ?? fence.charAt(0).toUpperCase() + fence.slice(1)}
-      textStyle={textStyle}
-      actions={
-        <>
-          <CodeBlockHeaderButton
-            icon="text.alignleft"
-            label={wrapped ? gt("Disable line wrap") : gt("Wrap lines")}
-            textStyle={textStyle}
-            active={wrapped}
-            onPress={() => setWrapped((value) => !value)}
-          />
-          <CodeBlockHeaderButton
-            icon="doc.on.doc"
-            label={gt("Copy code")}
-            textStyle={textStyle}
-            onPress={() => copyTextWithHaptic(code)}
-          />
-        </>
-      }
-    >
-      {wrapped ? (
-        content
-      ) : (
-        <ScrollView
-          horizontal
-          // As in the thread feed: with the keyboard open, the first long-press reaches the copy menu.
-          keyboardShouldPersistTaps="always"
-          contentContainerStyle={{ flexGrow: 1 }}
-        >
-          {content}
-        </ScrollView>
-      )}
-    </CodeBlockFrame>
+    <>
+      <CodeBlockFrame
+        label={displayLabel}
+        textStyle={textStyle}
+        actions={
+          <>
+            {Platform.OS === "android" ? (
+              <>
+                <CodeBlockHeaderButton
+                  icon="arrow.up.left.and.arrow.down.right"
+                  label={gt("Open fullscreen code viewer")}
+                  textStyle={textStyle}
+                  onPress={() => setFullscreenOpen(true)}
+                />
+                <CodeBlockHeaderButton
+                  icon="square.and.arrow.up"
+                  label={gt("Share code card")}
+                  textStyle={textStyle}
+                  onPress={() =>
+                    openShareCard({
+                      title: displayLabel,
+                      body: code,
+                      isCode: true,
+                    })
+                  }
+                />
+              </>
+            ) : null}
+            <CodeBlockHeaderButton
+              icon="text.alignleft"
+              label={wrapped ? gt("Disable line wrap") : gt("Wrap lines")}
+              textStyle={textStyle}
+              active={wrapped}
+              onPress={() => setWrapped((value) => !value)}
+            />
+            <CodeBlockHeaderButton
+              icon="doc.on.doc"
+              label={gt("Copy code")}
+              textStyle={textStyle}
+              onPress={() => copyTextWithHaptic(code)}
+            />
+          </>
+        }
+      >
+        {wrapped ? (
+          content
+        ) : (
+          <ScrollView
+            horizontal
+            // As in the thread feed: with the keyboard open, the first long-press reaches the copy menu.
+            keyboardShouldPersistTaps="always"
+            contentContainerStyle={{ flexGrow: 1 }}
+          >
+            {content}
+          </ScrollView>
+        )}
+      </CodeBlockFrame>
+      {Platform.OS === "android" && fullscreenOpen ? (
+        <FullscreenCodeModal
+          visible={fullscreenOpen}
+          code={code}
+          languageLabel={displayLabel}
+          fence={props.fence}
+          highlightLanguage={props.language}
+          scheme={props.scheme}
+          onClose={() => setFullscreenOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }

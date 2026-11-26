@@ -7,7 +7,7 @@ import { videoMimeType } from "@t3tools/shared/video";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { Paths } from "expo-file-system";
-import { Image, Pressable, ScrollView, View } from "react-native";
+import { Image, Platform, Pressable, ScrollView, View } from "react-native";
 
 import { AppText as Text } from "./ui/AppText";
 import { AppActivityIndicator } from "./ui/AppActivityIndicator";
@@ -42,6 +42,7 @@ export interface ComposerAttachmentStripProps {
     sourceIdentifier: string,
   ) => void;
   readonly onPressDocument?: (attachment: DraftComposerFileAttachment) => void;
+  readonly onAnnotateImage?: (attachment: DraftComposerImageAttachment, uri: string) => void;
   readonly imageSize?: number;
   readonly imageBorderRadius?: number;
   readonly removeButtonPlacement?: "overlay" | "gutter";
@@ -61,6 +62,7 @@ type ComposerAttachmentThumbnailProps = {
     sourceIdentifier: string,
   ) => void;
   readonly onPressDocument?: (attachment: DraftComposerFileAttachment) => void;
+  readonly onAnnotateImage?: (attachment: DraftComposerImageAttachment, uri: string) => void;
 };
 
 export function ComposerAttachmentThumbnail(props: ComposerAttachmentThumbnailProps) {
@@ -186,6 +188,20 @@ function ComposerImageAttachment(
               });
           }}
         />
+        {Platform.OS === "android" && !props.compact && props.onAnnotateImage && previewUri ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={gt("Annotate {name}", { name: attachment.name })}
+            hitSlop={6}
+            onPress={(event) => {
+              event.stopPropagation?.();
+              props.onAnnotateImage?.(attachment, previewUri);
+            }}
+            className="absolute bottom-1 right-1 h-[22px] w-[22px] items-center justify-center rounded-[11px] bg-black/70"
+          >
+            <SymbolView name="pencil" size={11} tintColor="#ffffff" type="monochrome" />
+          </Pressable>
+        ) : null}
       </Pressable>
     </PresentationSource>
   );
@@ -335,6 +351,7 @@ export function ComposerAttachmentStrip(props: ComposerAttachmentStripProps) {
                 onPressPreview={props.onPressPreview}
                 onPressVideo={props.onPressVideo}
                 onPressDocument={props.onPressDocument}
+                onAnnotateImage={props.onAnnotateImage}
               />
               <Pressable
                 accessibilityRole="button"

@@ -12,6 +12,7 @@ export function MediaPreviewHeader(props: {
   readonly media: ReturnType<typeof useMediaActions>;
   readonly closeAccessibilityLabel: string;
   readonly onClose: () => void;
+  readonly onAnnotate?: () => void;
 }) {
   return (
     <>
@@ -19,6 +20,16 @@ export function MediaPreviewHeader(props: {
         <AppText className="flex-1 font-t3-medium text-base text-white" numberOfLines={2}>
           {props.title}
         </AppText>
+        {props.onAnnotate ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Annotate image"
+            onPress={props.onAnnotate}
+            className="size-10 items-center justify-center rounded-full bg-white/15"
+          >
+            <SymbolView name="pencil" size={18} tintColor="#ffffff" type="monochrome" />
+          </Pressable>
+        ) : null}
         <MediaActionsMenu media={props.media} inModal />
         <Pressable
           accessibilityRole="button"

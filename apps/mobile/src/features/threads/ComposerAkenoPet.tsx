@@ -19,6 +19,7 @@ import { isLateNightHour } from "../../components/AkenoMascot";
 import { AppText as Text } from "../../components/ui/AppText";
 import { useAppActive, useReduceMotionEnabled } from "../../lib/appState";
 import { playUiSound } from "../../lib/uiSoundFx";
+import { subscribeCompanionWhisper } from "./activeThreadComposerBridge";
 
 export type ComposerAkenoPose = "idle" | "walk" | "working" | "happy" | "sleepy";
 
@@ -325,6 +326,36 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     }
     seatLiftY.set(withSpring(targetLift, TAP_SPRING));
   }, [pose, reducedMotion, seatLiftY]);
+
+  // Celebrate daily prompt milestones & quick-save toasts emitted from the composer or feed!
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to celebratory companion whispers and plays happy bounce reaction
+  useEffect(() => {
+    return subscribeCompanionWhisper((message) => {
+      showWhisper(message, 3400);
+      if (!props.activeThreadBusy) {
+        stopWalking("happy");
+        clearTimer(happyTimerRef);
+        happyTimerRef.current = setTimeout(() => {
+          happyTimerRef.current = null;
+          setPose("idle");
+        }, 3600);
+      }
+      if (!reducedMotion) {
+        jumpY.set(
+          withSequence(
+            withTiming(-10, { duration: 105, easing: Easing.out(Easing.cubic) }),
+            withSpring(0, TAP_SPRING),
+          ),
+        );
+        popScale.set(
+          withSequence(
+            withTiming(1.14, { duration: 95, easing: Easing.out(Easing.cubic) }),
+            withSpring(1, TAP_SPRING),
+          ),
+        );
+      }
+    });
+  }, [jumpY, popScale, props.activeThreadBusy, reducedMotion, showWhisper, stopWalking]);
 
   // Clean up all timers on unmount.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears roaming and reaction timers on unmount

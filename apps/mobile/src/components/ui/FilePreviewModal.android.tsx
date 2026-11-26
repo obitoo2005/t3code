@@ -2,11 +2,15 @@ import { T, useGT } from "gt-react-native";
 
 import { Button } from "./Button";
 import * as Dialog from "./Dialog";
-import { createContext, useContext, useEffect, useEffectEvent, useRef } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 import { Modal, View } from "react-native";
 import ImageViewing from "react-native-image-viewing";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import {
+  attachImageToActiveComposer,
+  getActiveThreadComposerHandlers,
+} from "../../features/threads/activeThreadComposerBridge";
 import { openAttachmentInViewer } from "../../lib/attachmentDownload";
 import { useMediaActions } from "../../state/mediaActions";
 import type {
@@ -16,6 +20,7 @@ import type {
   ResolvedFilePreviewDocument,
 } from "./FilePreviewModal.types";
 import { FilePreviewSession } from "./FilePreviewSession";
+import { ImageAnnotatorModal } from "../ImageAnnotatorModal";
 import { MediaPreviewHeader } from "../MediaPreviewHeader";
 
 export type {
@@ -134,7 +139,11 @@ type ImagePreviewProps = {
 };
 
 const ImagePreviewContext = createContext<
-  (ImagePreviewProps & { readonly getSaveImageSignal: () => AbortSignal }) | null
+  | (ImagePreviewProps & {
+      readonly getSaveImageSignal: () => AbortSignal;
+      readonly onStartAnnotate: (uri: string, replaceAttachmentId?: string) => void;
+    })
+  | null
 >(null);
 
 // Keyed by page so swiping away clears the busy state and aborts pending share preparation.
@@ -150,6 +159,10 @@ function ImagePreviewPageHeader(header: { readonly imageIndex: number }) {
   const mediaActions = useMediaActions(source?.actionsSource, props.onRequestClose, {
     getSaveImageSignal: props.getSaveImageSignal,
   });
+  const canAnnotate = Boolean(source?.uri) && getActiveThreadComposerHandlers() !== null;
+  const draftAttachmentId = source?.sourceIdentifier?.startsWith("draft-image:")
+    ? source.sourceIdentifier.slice("draft-image:".length)
+    : undefined;
   return (
     <View className="bg-black/70" style={{ paddingTop: insets.top }}>
       <MediaPreviewHeader
@@ -157,6 +170,11 @@ function ImagePreviewPageHeader(header: { readonly imageIndex: number }) {
         media={mediaActions}
         closeAccessibilityLabel={gt("Close image")}
         onClose={props.onRequestClose}
+        onAnnotate={
+          canAnnotate && source?.uri
+            ? () => props.onStartAnnotate(source.uri!, draftAttachmentId)
+            : undefined
+        }
       />
     </View>
   );
@@ -173,7 +191,12 @@ function imageViewingProps(source: FilePreviewImages) {
 }
 
 function ImagePreview(props: ImagePreviewProps) {
+  const gt = useGT();
   const saveController = useRef<AbortController | null>(null);
+  const [annotateTarget, setAnnotateTarget] = useState<{
+    readonly uri: string;
+    readonly replaceAttachmentId?: string;
+  } | null>(null);
   const getSaveImageSignal = () => {
     if (saveController.current === null) {
       saveController.current = new AbortController();
@@ -189,17 +212,40 @@ function ImagePreview(props: ImagePreviewProps) {
     [],
   );
   return (
-    <ImagePreviewContext value={{ ...props, getSaveImageSignal }}>
-      <ImageViewing
-        {...imageViewingProps(props.source)}
-        visible
-        presentationStyle="fullScreen"
-        onRequestClose={props.onRequestClose}
-        swipeToCloseEnabled={false}
-        doubleTapToZoomEnabled
-        HeaderComponent={ImagePreviewHeader}
+    <>
+      <ImagePreviewContext
+        value={{
+          ...props,
+          getSaveImageSignal,
+          onStartAnnotate: (uri, replaceAttachmentId) =>
+            setAnnotateTarget({ uri, replaceAttachmentId }),
+        }}
+      >
+        <ImageViewing
+          {...imageViewingProps(props.source)}
+          visible={annotateTarget === null}
+          presentationStyle="fullScreen"
+          onRequestClose={props.onRequestClose}
+          swipeToCloseEnabled={false}
+          doubleTapToZoomEnabled
+          HeaderComponent={ImagePreviewHeader}
+        />
+      </ImagePreviewContext>
+      <ImageAnnotatorModal
+        visible={annotateTarget !== null}
+        imageUri={annotateTarget?.uri ?? null}
+        confirmLabel={annotateTarget?.replaceAttachmentId ? gt("Save") : gt("Attach")}
+        onClose={() => setAnnotateTarget(null)}
+        onConfirm={async (annotatedUri) => {
+          const ok = await attachImageToActiveComposer(
+            annotatedUri,
+            annotateTarget?.replaceAttachmentId,
+          );
+          setAnnotateTarget(null);
+          if (ok) props.onRequestClose();
+        }}
       />
-    </ImagePreviewContext>
+    </>
   );
 }
 
@@ -210,17 +256,7 @@ function AndroidFilePreview(props: FilePreviewViewerProps) {
   const selected = source.images[source.selectedIndex]!;
   const images = source.images.filter((image) => !image.failed);
   const gallery = { ...source, images, selectedIndex: images.indexOf(selected) };
-  if (selected.actionsSource)
-    return <ImagePreview source={gallery} onRequestClose={props.onRequestClose} />;
-  return (
-    <ImageViewing
-      {...imageViewingProps(gallery)}
-      visible
-      onRequestClose={props.onRequestClose}
-      swipeToCloseEnabled={false}
-      doubleTapToZoomEnabled
-    />
-  );
+  return <ImagePreview source={gallery} onRequestClose={props.onRequestClose} />;
 }
 
 /** Shows images, PDFs and documents full screen. */

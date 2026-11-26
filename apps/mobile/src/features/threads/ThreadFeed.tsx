@@ -187,7 +187,12 @@ import { ThreadInlineFilePreview } from "./ThreadInlineFilePreview";
 import { flattenThemeColor, themeColorWithContrast } from "../../lib/mobileTheme";
 import { PresentationSource } from "../../components/ui/NativePresentation";
 import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
-import Animated, { FadeIn, FadeInDown, type SharedValue } from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown, FadeOut, type SharedValue } from "react-native-reanimated";
+import { openShareCard } from "../../components/ShareCardModal";
+import { deriveQuickPromptTitle } from "../../lib/riasEnhancements";
+import { playUiSound } from "../../lib/uiSoundFx";
+import { useSavedQuickPrompts, useStarredMessages } from "../../state/use-rias-enhancements";
+import { emitCompanionWhisper } from "./activeThreadComposerBridge";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { FONT_FAMILIES } from "../../lib/fontFamilies";
 import { scopedThreadKey } from "../../lib/scopedEntities";
@@ -426,10 +431,43 @@ const USER_MESSAGE_COPY_MENU_ACTIONS = [
   { id: "copy-prompt-link", title: msg("Copy prompt link"), image: "link" },
 ];
 
+function StarMessageButton(props: {
+  readonly starred: boolean;
+  readonly onToggle: () => void;
+  readonly tintColor: ColorValue;
+  readonly buttonSize?: number;
+  readonly iconSize?: number;
+}) {
+  const gt = useGT();
+  if (Platform.OS !== "android") return null;
+  const size = props.buttonSize ?? 28;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={props.starred ? gt("Remove bookmark") : gt("Bookmark message")}
+      hitSlop={6}
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        playUiSound("shuffle");
+        props.onToggle();
+      }}
+      style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}
+    >
+      <SymbolView
+        name={props.starred ? "star.fill" : "star"}
+        size={props.iconSize ?? 13}
+        tintColor={props.starred ? "#F43F5E" : props.tintColor}
+        type="monochrome"
+      />
+    </Pressable>
+  );
+}
+
 function UserMessageCopyButton(props: {
   readonly text: string;
   readonly onCopy: (() => Promise<void>) | undefined;
   readonly tintColor: ColorValue;
+  readonly onSaveQuickPrompt?: () => void;
 }) {
   const gt = useGT();
   const m = useMessages();
@@ -444,15 +482,24 @@ function UserMessageCopyButton(props: {
     />
   );
   const linkText = replaceComposerContextReferences(props.text, (reference) => reference.label);
-  if (linkText.length > PROMPT_LINK_MAX_PROMPT_LENGTH) return button;
+  const actions = [
+    ...(linkText.length <= PROMPT_LINK_MAX_PROMPT_LENGTH
+      ? USER_MESSAGE_COPY_MENU_ACTIONS.map((action) => ({
+          ...action,
+          title: m(action.title),
+        }))
+      : []),
+    ...(Platform.OS === "android" && props.onSaveQuickPrompt
+      ? [{ id: "save-quick-prompt", title: gt("Save as quick prompt"), image: "bolt.circle" }]
+      : []),
+  ];
+  if (actions.length === 0) return button;
   return (
     <Menu
-      actions={USER_MESSAGE_COPY_MENU_ACTIONS.map((action) => ({
-        ...action,
-        title: m(action.title),
-      }))}
+      actions={actions}
       onPressAction={({ nativeEvent }) => {
         if (nativeEvent.event === "copy-prompt-link") void copyPromptLink(linkText);
+        else if (nativeEvent.event === "save-quick-prompt") props.onSaveQuickPrompt?.();
       }}
       shouldOpenOnLongPress
     >
@@ -2060,6 +2107,9 @@ function renderFeedEntry(
     readonly workflowOpening: WorkflowOpening | null;
     readonly userMessageGrouping: GroupedThreadFeedRow["userMessageGrouping"];
     readonly m: ReturnType<typeof useMessages>;
+    readonly starredMessageIds: ReadonlySet<string>;
+    readonly onToggleStarMessage: (messageId: string) => void;
+    readonly onSaveQuickPrompt: (text: string) => void;
   },
 ) {
   const entry = info.item;
@@ -2677,20 +2727,28 @@ function renderFeedEntry(
                 </Pressable>
               ) : null}
               {presentation.text.trim().length > 0 ? (
-                <UserMessageCopyButton
-                  text={presentation.text}
-                  onCopy={
-                    message.context && presentation.attribution !== "guest"
-                      ? () =>
-                          writeComposerContextClipboard(message.text, {
-                            version: 1,
-                            source: { environmentId: props.environmentId, messageId: message.id },
-                            records: message.context!.records,
-                          })
-                      : undefined
-                  }
-                  tintColor={iconSubtleColor}
-                />
+                <>
+                  <StarMessageButton
+                    starred={props.starredMessageIds.has(message.id)}
+                    onToggle={() => props.onToggleStarMessage(message.id)}
+                    tintColor={iconSubtleColor}
+                  />
+                  <UserMessageCopyButton
+                    text={presentation.text}
+                    onCopy={
+                      message.context && presentation.attribution !== "guest"
+                        ? () =>
+                            writeComposerContextClipboard(message.text, {
+                              version: 1,
+                              source: { environmentId: props.environmentId, messageId: message.id },
+                              records: message.context!.records,
+                            })
+                        : undefined
+                    }
+                    onSaveQuickPrompt={() => props.onSaveQuickPrompt(presentation.text)}
+                    tintColor={iconSubtleColor}
+                  />
+                </>
               ) : null}
             </View>
           ) : null}
@@ -2744,6 +2802,45 @@ function renderFeedEntry(
               buttonSize={props.replyActionSize.button}
               iconSize={props.replyActionSize.icon}
             />
+            {Platform.OS === "android" ? (
+              <>
+                <StarMessageButton
+                  starred={props.starredMessageIds.has(message.id)}
+                  onToggle={() => props.onToggleStarMessage(message.id)}
+                  tintColor={iconSubtleColor}
+                  buttonSize={props.replyActionSize.button}
+                  iconSize={props.replyActionSize.icon}
+                />
+                {renderedText.trim().length > 0 ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={m(msg("Share as card"))}
+                    hitSlop={6}
+                    onPress={() => {
+                      void Haptics.selectionAsync();
+                      openShareCard({
+                        title: props.threadTitle || "Rias Code",
+                        body: renderedText,
+                        isCode: false,
+                      });
+                    }}
+                    style={{
+                      width: props.replyActionSize.button,
+                      height: props.replyActionSize.button,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <SymbolView
+                      name="square.and.arrow.up"
+                      size={props.replyActionSize.icon}
+                      tintColor={iconSubtleColor}
+                      type="monochrome"
+                    />
+                  </Pressable>
+                ) : null}
+              </>
+            ) : null}
             {message.projectedItem ? (
               <AssistantForkButton
                 environmentId={props.environmentId}
@@ -3773,6 +3870,34 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const [setupDetailsThreadId, setSetupDetailsThreadId] = useState<string | null>(null);
   const setupDetailsOpen = setupDetailsThreadId === props.threadId && !!props.worktreeSetup;
   const openSetupDetails = () => setSetupDetailsThreadId(props.threadId);
+  const feedThreadKey = scopedThreadKey(props.environmentId, props.threadId);
+  const { starredIds, starredSet, toggleStar } = useStarredMessages(feedThreadKey);
+  const { addPrompt: addQuickPrompt } = useSavedQuickPrompts();
+  const handleSaveQuickPrompt = (rawText: string) => {
+    const clean = replaceComposerContextReferences(rawText, (ref) => ref.label).trim();
+    if (!clean) return;
+    addQuickPrompt({
+      id: `qp-${uuidv4()}`,
+      title: deriveQuickPromptTitle(clean),
+      prompt: clean,
+    });
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    playUiSound("done");
+    emitCompanionWhisper("Saved to Quick Prompts ✦");
+  };
+  const [promptJumperVisible, setPromptJumperVisible] = useState(false);
+  const promptJumperHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const promptJumperCursorRef = useRef<number | null>(null);
+  const userPromptCountRef = useRef(0);
+  const schedulePromptJumperHide = () => {
+    if (promptJumperHideTimerRef.current !== null) {
+      clearTimeout(promptJumperHideTimerRef.current);
+    }
+    promptJumperHideTimerRef.current = setTimeout(() => {
+      promptJumperHideTimerRef.current = null;
+      setPromptJumperVisible(false);
+    }, 2200);
+  };
   const listAppearanceData = {
     gt,
     setupDetailsOpen,
@@ -3797,6 +3922,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     contentWidth,
     skills: props.skills,
     workflowOpening,
+    starredIds,
   };
   const reportHeaderMaterialVisibility = (visible: boolean) => {
     if (headerMaterialVisibleRef.current === visible) {
@@ -3805,7 +3931,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     headerMaterialVisibleRef.current = visible;
     onHeaderMaterialVisibilityChange?.(visible);
   };
-  const feedThreadKey = scopedThreadKey(props.environmentId, props.threadId);
   const [loadedListKey, setLoadedListKey] = useState<string | null>(null);
   const [landedListKey, setLandedListKey] = useState<string | null>(null);
   // LegendList reports ready, and shows its rows, while rows measured during its initial scroll can
@@ -3832,6 +3957,10 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       event.nativeEvent.contentOffset.y + (usesNativeAutomaticInsets ? barInset : 0) > 6,
     );
     handleMetricsChange();
+    if (Platform.OS === "android" && userPromptCountRef.current >= 2) {
+      setPromptJumperVisible(true);
+      schedulePromptJumperHide();
+    }
   };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the list's end state to report it to the parent
   useLayoutEffect(() => {
@@ -3911,6 +4040,60 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     workflowOpeningMessageId: workflowOpening?.messageId,
     setupAnchorIndex: props.worktreeSetup || props.preparingWorktree ? setupAnchorIndex : undefined,
   });
+  const userPromptIndices = useMemo(() => {
+    const indices: number[] = [];
+    for (let i = 0; i < groupedFeed.length; i += 1) {
+      const row = groupedFeed[i];
+      if (row?.type === "message" && row.message.role === "user") {
+        indices.push(i);
+      }
+    }
+    return indices;
+  }, [groupedFeed]);
+  userPromptCountRef.current = userPromptIndices.length;
+  const jumpToRelativePrompt = (direction: -1 | 1) => {
+    const list = listRef.current;
+    if (!list || userPromptIndices.length === 0) return;
+    const state = list.getState();
+    const scrollY = state?.scroll ?? 0;
+    let targetIndex: number | undefined;
+    if (direction === -1) {
+      for (let i = userPromptIndices.length - 1; i >= 0; i -= 1) {
+        const idx = userPromptIndices[i]!;
+        const pos = state?.positionAtIndex(idx);
+        if (pos !== undefined && pos < scrollY - 24) {
+          targetIndex = idx;
+          break;
+        }
+      }
+      if (targetIndex === undefined) {
+        const cursor = promptJumperCursorRef.current;
+        const prevPos =
+          cursor !== null ? Math.max(0, userPromptIndices.indexOf(cursor) - 1) : 0;
+        targetIndex = userPromptIndices[prevPos];
+      }
+    } else {
+      for (let i = 0; i < userPromptIndices.length; i += 1) {
+        const idx = userPromptIndices[i]!;
+        const pos = state?.positionAtIndex(idx);
+        if (pos !== undefined && pos > scrollY + 48) {
+          targetIndex = idx;
+          break;
+        }
+      }
+      if (targetIndex === undefined) {
+        const cursor = promptJumperCursorRef.current;
+        const currentPos = cursor !== null ? userPromptIndices.indexOf(cursor) : -1;
+        const nextPos = Math.min(userPromptIndices.length - 1, Math.max(0, currentPos + 1));
+        targetIndex = userPromptIndices[nextPos];
+      }
+    }
+    if (targetIndex === undefined) return;
+    promptJumperCursorRef.current = targetIndex;
+    void Haptics.selectionAsync();
+    void list.scrollToIndex({ index: targetIndex, viewPosition: 0.1, animated: !reduceMotion });
+    schedulePromptJumperHide();
+  };
   const { contentInsetEndAdjustment } = props;
   const attachList = (list: LegendListRef | null) => {
     listRef.current = list;
@@ -3992,6 +4175,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   useEffect(
     () => () => {
       if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
+      if (promptJumperHideTimerRef.current !== null) clearTimeout(promptJumperHideTimerRef.current);
       if (disclosureMotionTimer.current !== null) clearTimeout(disclosureMotionTimer.current);
       if (disclosureSettleFrameRef.current !== null) {
         cancelAnimationFrame(disclosureSettleFrameRef.current);
@@ -4301,6 +4485,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             skills: props.skills,
             workspaceRoot: props.workspaceRoot,
             workflowOpening,
+            starredMessageIds: starredSet,
+            onToggleStarMessage: toggleStar,
+            onSaveQuickPrompt: handleSaveQuickPrompt,
           })}
           {props.worktreeSetup && info.index === setupAnchorIndex ? (
             <WorktreeSetupCard
@@ -4479,6 +4666,72 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           />
         ) : null}
         <FilePreviewModal source={expandedFile} onRequestClose={closeFilePreview} />
+        {Platform.OS === "android" && promptJumperVisible && userPromptIndices.length >= 2 ? (
+          <Animated.View
+            entering={FadeIn.duration(140)}
+            exiting={FadeOut.duration(220)}
+            style={{
+              position: "absolute",
+              right: 10,
+              top: "42%",
+              zIndex: 25,
+              borderRadius: 999,
+              backgroundColor:
+                themeAppearance === "dark"
+                  ? "rgba(18, 18, 26, 0.86)"
+                  : "rgba(255, 255, 255, 0.9)",
+              borderWidth: 1,
+              borderColor:
+                themeAppearance === "dark"
+                  ? "rgba(255, 255, 255, 0.16)"
+                  : "rgba(0, 0, 0, 0.12)",
+              overflow: "hidden",
+              shadowColor: "#000000",
+              shadowOpacity: 0.35,
+              shadowRadius: 10,
+              elevation: 6,
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={gt("Jump to previous prompt")}
+              hitSlop={6}
+              onPress={() => jumpToRelativePrompt(-1)}
+              style={{ width: 34, height: 34, alignItems: "center", justifyContent: "center" }}
+            >
+              <SymbolView
+                name="chevron.up"
+                size={15}
+                tintColor={themeAppearance === "dark" ? "#F4F4F5" : "#18181B"}
+                type="monochrome"
+              />
+            </Pressable>
+            <View
+              style={{
+                height: StyleSheet.hairlineWidth,
+                marginHorizontal: 7,
+                backgroundColor:
+                  themeAppearance === "dark"
+                    ? "rgba(255, 255, 255, 0.15)"
+                    : "rgba(0, 0, 0, 0.12)",
+              }}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={gt("Jump to next prompt")}
+              hitSlop={6}
+              onPress={() => jumpToRelativePrompt(1)}
+              style={{ width: 34, height: 34, alignItems: "center", justifyContent: "center" }}
+            >
+              <SymbolView
+                name="chevron.down"
+                size={15}
+                tintColor={themeAppearance === "dark" ? "#F4F4F5" : "#18181B"}
+                type="monochrome"
+              />
+            </Pressable>
+          </Animated.View>
+        ) : null}
       </View>
     </PresentationSource>
   );

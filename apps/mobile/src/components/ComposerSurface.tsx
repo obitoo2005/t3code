@@ -1,14 +1,19 @@
-import { useState, type ReactNode } from "react";
-import { I18nManager, Platform, type ViewStyle } from "react-native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { I18nManager, Platform, View, type ViewStyle } from "react-native";
 import Animated, {
+  cancelAnimation,
+  Easing,
   FadeIn,
   type LayoutAnimationFunction,
   ReduceMotion,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
+  withRepeat,
+  withSequence,
   withTiming,
 } from "react-native-reanimated";
+import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -176,12 +181,77 @@ export function ComposerSurface(props: {
   readonly children: ReactNode;
   readonly style: ViewStyle;
   readonly animateLayout?: boolean;
+  readonly working?: boolean;
 }) {
   const colors = useUniwindTheme();
   const { themeAppearance, themeId } = useAppearancePreferences();
+  const appActive = useAppActive();
+  const reducedMotion = useReduceMotionEnabled();
   const isDark = themeAppearance === "dark";
   const isCrimson = themeId === "rias-crimson";
   const isViolet = themeId === "akeno-violet";
+  const [surfaceWidth, setSurfaceWidth] = useState(0);
+  const shimmerProgress = useSharedValue(0);
+  const completionFlash = useSharedValue(0);
+  const prevWorkingRef = useRef(Boolean(props.working));
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives subtle 165Hz liquid glow sweep along composer top rim while working and flashes on completion
+  useEffect(() => {
+    const working = Boolean(props.working);
+    const wasWorking = prevWorkingRef.current;
+    prevWorkingRef.current = working;
+
+    if (Platform.OS !== "android" || reducedMotion) {
+      cancelAnimation(shimmerProgress);
+      shimmerProgress.set(0);
+      return;
+    }
+
+    if (working && appActive) {
+      shimmerProgress.set(0);
+      shimmerProgress.set(
+        withRepeat(
+          withTiming(1, {
+            duration: 1650,
+            easing: Easing.inOut(Easing.sin),
+            reduceMotion: ReduceMotion.System,
+          }),
+          -1,
+          false,
+        ),
+      );
+      return;
+    }
+
+    cancelAnimation(shimmerProgress);
+    if (wasWorking && !working) {
+      completionFlash.set(
+        withSequence(
+          withTiming(0.95, { duration: 110, easing: Easing.out(Easing.cubic) }),
+          withTiming(0, { duration: 420, easing: Easing.out(Easing.quad) }),
+        ),
+      );
+    }
+  }, [appActive, completionFlash, props.working, reducedMotion, shimmerProgress]);
+
+  const glowColor = isCrimson
+    ? "#FB7185"
+    : isViolet
+      ? "#C084FC"
+      : isDark
+        ? "#60A5FA"
+        : "#2563EB";
+  const sweepWidth = Math.max(88, Math.round(surfaceWidth * 0.36));
+  const shimmerStyle = useAnimatedStyle(() => {
+    const travel = surfaceWidth + sweepWidth;
+    return {
+      transform: [{ translateX: -sweepWidth + shimmerProgress.value * travel }],
+      opacity: props.working ? 0.88 : 0,
+    };
+  });
+  const flashStyle = useAnimatedStyle(() => ({
+    opacity: completionFlash.value,
+  }));
   const targetBorderRadius =
     typeof props.style.borderRadius === "number" ? props.style.borderRadius : 0;
   const shouldAnimate = props.animateLayout !== false && Platform.OS !== "android";
@@ -246,6 +316,14 @@ export function ComposerSurface(props: {
         Platform.OS === "android" ? undefined : "shadow-[0_6px_28px] shadow-adaptive-black-a15-a35"
       }
       layout={layoutTransition}
+      onLayout={
+        Platform.OS === "android"
+          ? (event) => {
+              const nextW = Math.round(event.nativeEvent.layout.width);
+              if (nextW > 0 && nextW !== surfaceWidth) setSurfaceWidth(nextW);
+            }
+          : undefined
+      }
       style={[
         animatedShapeStyle,
         {
@@ -265,6 +343,45 @@ export function ComposerSurface(props: {
       >
         {null}
       </AnimatedGlassSurface>
+      {Platform.OS === "android" && surfaceWidth > 0 ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 14,
+            right: 14,
+            height: 2.5,
+            overflow: "hidden",
+            borderRadius: 2,
+            zIndex: 2,
+          }}
+        >
+          {props.working ? (
+            <Animated.View
+              style={[
+                {
+                  width: sweepWidth,
+                  height: 2.5,
+                  borderRadius: 2,
+                  backgroundColor: glowColor,
+                },
+                shimmerStyle,
+              ]}
+            />
+          ) : null}
+          <Animated.View
+            style={[
+              {
+                position: "absolute",
+                inset: 0,
+                backgroundColor: glowColor,
+              },
+              flashStyle,
+            ]}
+          />
+        </View>
+      ) : null}
       <Animated.View
         collapsable={false}
         layout={layoutTransition}

@@ -1,13 +1,16 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { MessageId, ScopedThreadRef } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { useGT, useMessages } from "gt-react-native";
 import { Platform } from "react-native";
 
 import { AppBar } from "../../components/ui/AppBar";
 import type { AppBarAction, AppBarMenu } from "../../components/ui/AppBar.types";
+import { scopedThreadKey } from "../../lib/scopedEntities";
+import type { ThreadFeedEntry } from "../../lib/threadActivity";
 import { environmentThreadShells } from "../../state/threads";
+import { useStarredMessages } from "../../state/use-rias-enhancements";
 import {
   useAdaptiveWorkspaceLayout,
   useWorkspacePaneState,
@@ -19,6 +22,7 @@ import {
   useThreadGitMenuDefinition,
   type ThreadGitControlsProps,
 } from "./ThreadGitControls";
+import { requestThreadMessageJump } from "./threadMessageJump";
 import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
 const EMPTY_SIDE_CHATS_ATOM = Atom.make<ReadonlyArray<EnvironmentThreadShell>>([]).pipe(
@@ -35,6 +39,7 @@ export function ThreadHeader(props: {
   readonly hasThreadCwd: boolean;
   readonly inspectorMode: ThreadInspectorMode | null;
   readonly onOpenFilesInspector: () => void;
+  readonly feed?: ReadonlyArray<ThreadFeedEntry>;
 }) {
   const gt = useGT();
   const m = useMessages();
@@ -42,6 +47,11 @@ export function ThreadHeader(props: {
   const openLinkedThread = useOpenLinkedThread();
   const { toggleAuxiliaryPane, startNewTask } = useAdaptiveWorkspaceLayout();
   const { panes } = useWorkspacePaneState();
+  const threadKey =
+    props.threadRef && !props.draft
+      ? scopedThreadKey(props.threadRef.environmentId, props.threadRef.threadId)
+      : null;
+  const { starredIds } = useStarredMessages(threadKey);
   const sideChats = useAtomValue(
     Platform.OS === "android" && !props.draft && props.threadRef
       ? environmentThreadShells.sideChatsAtom(props.threadRef)
@@ -49,6 +59,38 @@ export function ThreadHeader(props: {
   );
   const gitMenu = useThreadGitMenuDefinition(props.gitControls);
   const terminalMenu = threadTerminalMenu(props.gitControls, m);
+  const starredMenu: AppBarMenu | null =
+    Platform.OS === "android" && threadKey && starredIds.length > 0
+      ? {
+          title: gt("Starred messages"),
+          status:
+            starredIds.length === 1
+              ? gt("1 starred message")
+              : gt("{count} starred messages", { count: starredIds.length }),
+          icon: "star.fill",
+          badgeCount: starredIds.length,
+          badgeTone: "accent",
+          separateBackground: false,
+          items: starredIds.map((messageId, index) => {
+            const match = props.feed?.find(
+              (entry) => entry.type === "message" && entry.message.id === messageId,
+            );
+            const message = match?.type === "message" ? match.message : null;
+            const rolePrefix = message?.role === "user" ? gt("You") : gt("AI");
+            const snippet = message?.text
+              ? message.text.replace(/\s+/g, " ").trim().slice(0, 56)
+              : gt("Saved message #{index}", { index: index + 1 });
+            return {
+              id: `starred:${messageId}`,
+              title: snippet || gt("Saved message #{index}", { index: index + 1 }),
+              subtitle: rolePrefix,
+              icon: "star.fill",
+              iconColor: "#F43F5E",
+              onPress: () => requestThreadMessageJump(threadKey, messageId as MessageId),
+            };
+          }),
+        }
+      : null;
   const sideChatsMenu: AppBarMenu | null =
     Platform.OS === "android" && !props.draft && props.threadRef && sideChats.length > 0
       ? (() => {
@@ -113,7 +155,7 @@ export function ThreadHeader(props: {
         },
       ]
     : [];
-  const menus = [sideChatsMenu, gitMenu, terminalMenu].filter(
+  const menus = [starredMenu, sideChatsMenu, gitMenu, terminalMenu].filter(
     (menu): menu is AppBarMenu => menu !== null,
   );
 

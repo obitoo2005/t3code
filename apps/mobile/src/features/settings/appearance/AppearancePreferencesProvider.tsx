@@ -2,6 +2,7 @@ import { createContext, startTransition, use, useEffect, useMemo, type ReactNode
 import { AppState, Appearance, Platform, useColorScheme } from "react-native";
 
 import { setUiSoundFxEnabled } from "../../../lib/uiSoundFx";
+import { ShareCardHost } from "../../../components/ShareCardModal";
 
 import { manufacturer } from "expo-device";
 import {
@@ -81,6 +82,8 @@ interface AppearancePreferencesContextValue {
   readonly setMascotPreference: (value: "rias" | "akeno" | "random") => void;
   readonly composerPet: "akeno" | "rei" | "off";
   readonly setComposerPet: (value: "akeno" | "rei" | "off") => void;
+  readonly shakeToShuffleEnabled: boolean;
+  readonly setShakeToShuffleEnabled: (value: boolean) => void;
 }
 
 const AppearancePreferencesContext = createContext<AppearancePreferencesContextValue | null>(null);
@@ -316,6 +319,9 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   const composerPet: "akeno" | "rei" | "off" = storedPreferences?.composerPet ?? "akeno";
   const setComposerPet = (value: "akeno" | "rei" | "off") =>
     updatePreferences({ composerPet: value });
+  const shakeToShuffleEnabled = storedPreferences?.shakeToShuffleEnabled !== false;
+  const setShakeToShuffleEnabled = (value: boolean) =>
+    updatePreferences({ shakeToShuffleEnabled: value });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- syncs persisted soundFxEnabled flag to imperative audio helper
   useEffect(() => {
     setUiSoundFxEnabled(soundFxEnabled);
@@ -351,6 +357,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setMascotPreference,
       composerPet,
       setComposerPet,
+      shakeToShuffleEnabled,
+      setShakeToShuffleEnabled,
     }),
     [
       appearance,
@@ -380,13 +388,18 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setMascotPreference,
       composerPet,
       setComposerPet,
+      shakeToShuffleEnabled,
+      setShakeToShuffleEnabled,
     ],
   );
 
   return (
     <AppearancePreferencesContext.Provider value={value}>
       <ScopedTheme theme={activeThemeName}>
-        <ScopedVariables variables={themeVariables}>{props.children}</ScopedVariables>
+        <ScopedVariables variables={themeVariables}>
+          {props.children}
+          {Platform.OS === "android" ? <ShareCardHost defaultThemeId={themeId} /> : null}
+        </ScopedVariables>
       </ScopedTheme>
     </AppearancePreferencesContext.Provider>
   );

@@ -71,9 +71,15 @@ function MascotAppearanceSection() {
 
 function SoundFxAppearanceSection() {
   const gt = useGT();
-  const { isReady, soundFxEnabled, setSoundFxEnabled } = useAppearancePreferences();
+  const {
+    isReady,
+    soundFxEnabled,
+    setSoundFxEnabled,
+    shakeToShuffleEnabled,
+    setShakeToShuffleEnabled,
+  } = useAppearancePreferences();
   return (
-    <SettingsSection title={gt("Sound effects")}>
+    <SettingsSection title={gt("Sound & motion")}>
       <SettingsSwitchRow
         label={gt("UI sound effects")}
         subtitle={gt("Soft chimes on message send, turn completion, and avatar shuffle.")}
@@ -84,6 +90,18 @@ function SoundFxAppearanceSection() {
           if (next) playUiSound("shuffle", { force: true });
         }}
       />
+      {Platform.OS === "android" ? (
+        <SettingsSwitchRow
+          label={gt("Shake Home to shuffle avatars")}
+          subtitle={gt("Give your phone a quick shake on Home to reshuffle anime chat avatars.")}
+          value={shakeToShuffleEnabled}
+          disabled={!isReady}
+          onValueChange={(next) => {
+            setShakeToShuffleEnabled(next);
+            if (next) playUiSound("shuffle");
+          }}
+        />
+      ) : null}
     </SettingsSection>
   );
 }
