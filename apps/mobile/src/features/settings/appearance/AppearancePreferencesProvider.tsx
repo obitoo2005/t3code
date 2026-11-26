@@ -2,7 +2,6 @@ import { createContext, startTransition, use, useEffect, useMemo, type ReactNode
 import { AppState, Appearance, Platform, useColorScheme } from "react-native";
 
 import { setUiSoundFxEnabled } from "../../../lib/uiSoundFx";
-import { ShareCardHost } from "../../../components/ShareCardModal";
 
 import { manufacturer } from "expo-device";
 import {
@@ -396,10 +395,7 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   return (
     <AppearancePreferencesContext.Provider value={value}>
       <ScopedTheme theme={activeThemeName}>
-        <ScopedVariables variables={themeVariables}>
-          {props.children}
-          {Platform.OS === "android" ? <ShareCardHost defaultThemeId={themeId} /> : null}
-        </ScopedVariables>
+        <ScopedVariables variables={themeVariables}>{props.children}</ScopedVariables>
       </ScopedTheme>
     </AppearancePreferencesContext.Provider>
   );

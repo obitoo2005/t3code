@@ -26,6 +26,7 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { ProjectChipIconRasterizer } from "./native/ProjectChipIconImages";
 import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
 import * as Dialog from "./components/ui/Dialog";
+import { ShareCardHost } from "./components/ShareCardModal";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
 import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
 import { installShowcaseCapture } from "./features/showcase/ShowcaseCaptureCoordinator";
@@ -286,7 +287,7 @@ export default function App() {
 }
 
 function AppContent() {
-  const { themeAppearance } = useAppearancePreferences();
+  const { themeAppearance, themeId } = useAppearancePreferences();
   const navigationTheme = useMobileNavigationTheme();
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- matches the Android navigation bar to the app theme, as StatusBar does for the status bar
@@ -323,6 +324,8 @@ function AppContent() {
               </NativeLayoutMetricsProvider>
             </GlobalVoiceInputControl>
             <OverlayPortalHost />
+            {/* Reads translations and safe area insets, so it must stay inside both providers. */}
+            {Platform.OS === "android" ? <ShareCardHost defaultThemeId={themeId} /> : null}
           </SafeAreaProvider>
         </KeyboardProvider>
       </GestureHandlerRootView>
