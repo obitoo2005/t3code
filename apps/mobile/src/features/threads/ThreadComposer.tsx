@@ -27,8 +27,15 @@ import {
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import { msg, T, useGT, useMessages } from "gt-react-native";
 import type { ReactNode } from "react";
-import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
-import { Keyboard, Platform, View } from "react-native";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type RefObject,
+} from "react";
+import { Keyboard, Platform, Pressable, View } from "react-native";
 import { composerImageGallery } from "../../lib/composerImageGallery";
 import { filePreviewGallery } from "../../lib/filePreviewGallery";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/ui/FilePreviewModal";
@@ -40,13 +47,16 @@ import {
 import Animated, {
   Easing,
   FadeIn,
+  FadeInDown,
   FadeOut,
+  FadeOutUp,
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
   withTiming,
 } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { useReduceMotionEnabled } from "../../lib/appState";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { themeColorWithAlpha } from "../../lib/mobileTheme";
@@ -54,7 +64,12 @@ import { playUiSound } from "../../lib/uiSoundFx";
 import { ImageAnnotatorModal } from "../../components/ImageAnnotatorModal";
 import { QuickPromptsSheet } from "../../components/QuickPromptsSheet";
 import { useDailyActivityStats } from "../../state/use-rias-enhancements";
-import { registerActiveThreadComposerHandlers } from "./activeThreadComposerBridge";
+import {
+  getComposerReplyQuote,
+  registerActiveThreadComposerHandlers,
+  setComposerReplyQuoteForDraft,
+  subscribeComposerReplyQuote,
+} from "./activeThreadComposerBridge";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import {
@@ -660,7 +675,13 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     },
   );
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers active composer handlers so fullscreen code quotes and annotated images land in this draft
+  const pendingReplyQuote = useSyncExternalStore(
+    subscribeComposerReplyQuote,
+    () => getComposerReplyQuote(composerDraftKey),
+    () => null,
+  );
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers active composer handlers so fullscreen code quotes, swipe replies, and annotated images land in this draft
   useEffect(() => {
     if (props.hidden) return;
     return registerActiveThreadComposerHandlers({
@@ -668,6 +689,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       insertText: (text) => insertDraftSnippet(text),
       attachImageUri: (uri, replaceAttachmentId) =>
         attachAnnotatedImage(uri, replaceAttachmentId),
+      focusComposer: () => {
+        requestAnimationFrame(() => inputRef.current?.focus());
+      },
     });
   }, [composerDraftKey, props.hidden]);
 
@@ -725,12 +749,20 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     inFlightThreadIdsRef.current.add(threadKey);
     await inputRef.current?.flushPendingInput();
     const draftAtSend = getComposerDraftSnapshot(composerDraftKey);
+    const activeReplyQuote = getComposerReplyQuote(composerDraftKey);
+    const expectedTextAtSend = activeReplyQuote
+      ? `${activeReplyQuote.quoteBlock}${draftAtSend.text}`
+      : draftAtSend.text;
+    if (activeReplyQuote) {
+      setComposerDraftText(composerDraftKey, expectedTextAtSend);
+      setComposerReplyQuoteForDraft(composerDraftKey, null);
+    }
     const stillSendable = () => {
       const draft = getComposerDraftSnapshot(composerDraftKey);
       return (
         pendingPastedTextAttachmentCountRef.current === 0 &&
         pendingNativeImagePasteCountRef.current === 0 &&
-        draft.text === draftAtSend.text &&
+        draft.text === expectedTextAtSend &&
         draft.attachments.length === draftAtSend.attachments.length &&
         draft.attachments.every(
           (attachment, index) => attachment.id === draftAtSend.attachments[index]?.id,
@@ -740,10 +772,20 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     const sent = await settlePromise(() => onSendMessage(followUp, stillSendable));
     inFlightThreadIdsRef.current.delete(threadKey);
     if (AsyncResult.isFailure(sent)) {
+      if (activeReplyQuote) {
+        setComposerDraftText(composerDraftKey, draftAtSend.text);
+        setComposerReplyQuoteForDraft(composerDraftKey, activeReplyQuote);
+      }
       console.error("[composer] send failed", squashAtomCommandFailure(sent));
       return;
     }
-    if (sent.value === null) return;
+    if (sent.value === null) {
+      if (activeReplyQuote) {
+        setComposerDraftText(composerDraftKey, draftAtSend.text);
+        setComposerReplyQuoteForDraft(composerDraftKey, activeReplyQuote);
+      }
+      return;
+    }
     playUiSound("send");
     recordTurn();
     if (Platform.OS === "android" && !reducedMotion) {
@@ -942,7 +984,17 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         className="relative w-full self-center"
         style={{ maxWidth: props.contentMaxWidth, overflow: "visible" }}
       >
-        {props.draftControls}
+        {props.draftControls ? (
+          <View
+            style={
+              Platform.OS === "android" && showQuotaMascot
+                ? { marginBottom: 56 }
+                : undefined
+            }
+          >
+            {props.draftControls}
+          </View>
+        ) : null}
         {!isSubmissionLocked &&
         composerMenu.trigger &&
         (composerMenu.items.length > 0 || composerMenu.trigger.kind === "pull-request") ? (
@@ -1049,7 +1101,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     stageWidth={composerStageWidth}
                     activeThreadBusy={props.activeThreadBusy}
                     isTyping={isFocused || draftMessage.trim().length > 0}
-                    size={80}
+                    size={82}
                     onPressOpenLimits={usageLimitsOffered ? openUsageLimits : undefined}
                   />
                   <ComposerAkenoPet
@@ -1091,6 +1143,89 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
             error={voiceInput.state.phase === "error" ? voiceInput.state.error : null}
             onDismiss={voiceInput.cancel}
           />
+          {pendingReplyQuote ? (
+            <Animated.View
+              entering={FadeInDown.duration(160)}
+              exiting={FadeOutUp.duration(130)}
+              style={{
+                marginHorizontal: 10,
+                marginTop: 4,
+                marginBottom: 4,
+                paddingVertical: 7,
+                paddingLeft: 10,
+                paddingRight: 8,
+                borderRadius: 14,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 9,
+                backgroundColor:
+                  pendingReplyQuote.author === "Rias"
+                    ? "rgba(251, 113, 133, 0.09)"
+                    : "rgba(192, 132, 252, 0.09)",
+                borderWidth: 1,
+                borderColor:
+                  pendingReplyQuote.author === "Rias"
+                    ? "rgba(251, 113, 133, 0.3)"
+                    : "rgba(192, 132, 252, 0.3)",
+              }}
+            >
+              <View
+                style={{
+                  width: 3,
+                  alignSelf: "stretch",
+                  borderRadius: 999,
+                  backgroundColor:
+                    pendingReplyQuote.author === "Rias" ? "#FB7185" : "#C084FC",
+                }}
+              />
+              <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                <Text
+                  allowFontScaling={false}
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: "700",
+                    color: pendingReplyQuote.author === "Rias" ? "#FDA4AF" : "#D8B4FE",
+                  }}
+                >
+                  {pendingReplyQuote.author === "Rias"
+                    ? gt("↩ Replying to Rias")
+                    : gt("↩ Replying to You")}
+                </Text>
+                <Text
+                  allowFontScaling={false}
+                  numberOfLines={1}
+                  className="text-xs text-foreground-muted"
+                >
+                  {pendingReplyQuote.preview}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={gt("Cancel reply quote")}
+                hitSlop={8}
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  setComposerReplyQuoteForDraft(composerDraftKey, null);
+                }}
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(255, 255, 255, 0.08)",
+                }}
+              >
+                <Text
+                  allowFontScaling={false}
+                  style={{ fontSize: 12, fontWeight: "700", color: "rgba(255, 255, 255, 0.72)" }}
+                >
+                  ✕
+                </Text>
+              </Pressable>
+            </Animated.View>
+          ) : null}
           {isExpanded ? editingAttachments : null}
           {attachmentBlockReason !== null ? (
             <View className="flex-row items-center gap-1.5 px-4 py-1.5">

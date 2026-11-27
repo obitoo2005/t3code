@@ -14,9 +14,10 @@ import Animated, {
 
 import { AppText as Text } from "../../components/ui/AppText";
 
-const SWIPE_TRIGGER_THRESHOLD_DP = 48;
+const SWIPE_TRIGGER_THRESHOLD_DP = 44;
 const SWIPE_MAX_DRAG_DP = 64;
 const SWIPE_QUOTE_MAX_CHARS = 280;
+const SWIPE_PREVIEW_MAX_CHARS = 120;
 
 const SNAP_BACK_SPRING = {
   damping: 18,
@@ -55,6 +56,17 @@ export function formatSwipeQuoteText(rawText: string): string | null {
     .map((line) => (line.length > 0 ? `> ${line}` : ">"))
     .join("\n");
   return `${quotedLines}\n\n`;
+}
+
+/**
+ * Collapses a quoted message into a crisp single-line preview for the Telegram-style reply bar.
+ */
+export function formatSwipeReplyPreview(rawText: string): string | null {
+  const collapsed = rawText.replace(/\s+/g, " ").trim();
+  if (collapsed.length === 0) return null;
+  return collapsed.length > SWIPE_PREVIEW_MAX_CHARS
+    ? `${collapsed.slice(0, SWIPE_PREVIEW_MAX_CHARS).trimEnd()}…`
+    : collapsed;
 }
 
 export interface SwipeToQuoteWrapperProps {
@@ -99,7 +111,7 @@ export const SwipeToQuoteWrapper = memo(function SwipeToQuoteWrapper(
       // oxlint-disable-next-line react/capitalized-calls -- Gesture.Pan is a gesture factory, not a React component.
       Gesture.Pan()
         .enabled(enabled)
-        .activeOffsetX([-24, 24])
+        .activeOffsetX([-18, 18])
         .failOffsetY([-14, 14])
         .onUpdate((event) => {
           const tx = event.translationX;

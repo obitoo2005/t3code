@@ -37,6 +37,7 @@ function AkenoPosePackCard() {
   const isSyncing = pack.status === "syncing";
   const hasAnyAssets =
     pack.poses.length > 0 ||
+    pack.riasPetPoses.length > 0 ||
     pack.riasSprites.length > 0 ||
     pack.riasVip.length > 0 ||
     pack.voices.length > 0;
@@ -46,10 +47,13 @@ function AkenoPosePackCard() {
         total: pack.totalCount || "…",
       })
     : hasAnyAssets
-      ? pack.riasSprites.length > 0 || pack.riasVip.length > 0 || pack.voices.length > 0
+      ? pack.riasPetPoses.length > 0 ||
+        pack.riasSprites.length > 0 ||
+        pack.riasVip.length > 0 ||
+        pack.voices.length > 0
         ? gt("{akeno} Akeno • {rias} Rias • {vip} VIP • {voices} voices", {
             akeno: pack.poses.length,
-            rias: pack.riasSprites.length,
+            rias: pack.riasSprites.length + pack.riasPetPoses.length,
             vip: pack.riasVip.length,
             voices: pack.voices.length,
           })

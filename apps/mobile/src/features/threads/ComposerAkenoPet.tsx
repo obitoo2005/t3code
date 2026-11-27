@@ -141,7 +141,10 @@ function buildAkenoPoseCatalog(syncedPoses: readonly SyncedAkenoPose[]): AkenoPo
   };
 }
 
-function buildRiasPoseCatalog(syncedSprites: readonly SyncedRiasSprite[]): AkenoPoseCatalog {
+function buildRiasPoseCatalog(
+  syncedPetPoses: readonly SyncedAkenoPose[],
+  syncedSprites: readonly SyncedRiasSprite[],
+): AkenoPoseCatalog {
   const sourceByPose: Record<string, ImageSource> = { ...RIAS_CORE_SOURCES };
   const whisperByPose: Record<string, string> = {};
   for (const [key, value] of Object.entries(RIAS_CORE_POSE_WHISPERS)) {
@@ -155,30 +158,49 @@ function buildRiasPoseCatalog(syncedSprites: readonly SyncedRiasSprite[]): Akeno
   const standingPoseSet = new Set<string>();
   const perchedStaticPoseSet = new Set<string>();
 
-  for (const entry of syncedSprites) {
-    if (entry.id in RIAS_CORE_SOURCES) continue;
-    sourceByPose[entry.id] = entry.source;
-    if (entry.caption) {
-      whisperByPose[entry.id] = entry.caption;
+  if (syncedPetPoses.length > 0) {
+    for (const entry of syncedPetPoses) {
+      sourceByPose[entry.id] = entry.source;
+      if (entry.whisper) {
+        whisperByPose[entry.id] = entry.whisper;
+      }
+      if (entry.id in RIAS_CORE_SOURCES) continue;
+      if (entry.stance === "standing") {
+        standingPoseSet.add(entry.id);
+      } else {
+        perchedStaticPoseSet.add(entry.id);
+      }
+      if (entry.roles.includes("showcase")) syncedShowcase.push(entry.id);
+      if (entry.roles.includes("settle")) settlePoses.push(entry.id);
+      if (entry.roles.includes("celebration")) celebrationPoses.push(entry.id);
+      if (entry.roles.includes("sleepy")) sleepyPoses.push(entry.id);
     }
-    if (entry.style === "uniform") {
-      standingPoseSet.add(entry.id);
-    } else {
-      perchedStaticPoseSet.add(entry.id);
-    }
-    syncedShowcase.push(entry.id);
-    if (entry.moods.includes("happy") || entry.moods.includes("done")) {
-      celebrationPoses.push(entry.id);
-    }
-    if (entry.moods.includes("sleepy")) {
-      sleepyPoses.push(entry.id);
-    }
-    if (
-      entry.moods.includes("cute") ||
-      entry.moods.includes("working") ||
-      entry.moods.includes("happy")
-    ) {
-      settlePoses.push(entry.id);
+  } else {
+    for (const entry of syncedSprites) {
+      if (entry.id in RIAS_CORE_SOURCES) continue;
+      sourceByPose[entry.id] = entry.source;
+      if (entry.caption) {
+        whisperByPose[entry.id] = entry.caption;
+      }
+      if (entry.style === "uniform") {
+        standingPoseSet.add(entry.id);
+      } else {
+        perchedStaticPoseSet.add(entry.id);
+      }
+      syncedShowcase.push(entry.id);
+      if (entry.moods.includes("happy") || entry.moods.includes("done")) {
+        celebrationPoses.push(entry.id);
+      }
+      if (entry.moods.includes("sleepy")) {
+        sleepyPoses.push(entry.id);
+      }
+      if (
+        entry.moods.includes("cute") ||
+        entry.moods.includes("working") ||
+        entry.moods.includes("happy")
+      ) {
+        settlePoses.push(entry.id);
+      }
     }
   }
 
@@ -337,12 +359,13 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
   const posePack = useAkenoPosePack();
+  const hasFullBodyRiasChibi = !isRias || posePack.riasPetPoses.length > 0;
   const catalog = useMemo(
     () =>
       isRias
-        ? buildRiasPoseCatalog(posePack.riasSprites)
+        ? buildRiasPoseCatalog(posePack.riasPetPoses, posePack.riasSprites)
         : buildAkenoPoseCatalog(posePack.poses),
-    [isRias, posePack.poses, posePack.riasSprites],
+    [isRias, posePack.poses, posePack.riasPetPoses, posePack.riasSprites],
   );
   const size = props.size ?? 74;
 
@@ -1308,11 +1331,26 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
               ]}
             >
               <View
-                style={{
-                  width: size,
-                  height: size,
-                  transform: [{ scaleX: facing }],
-                }}
+                style={
+                  hasFullBodyRiasChibi
+                    ? {
+                        width: size,
+                        height: size,
+                        transform: [{ scaleX: facing }],
+                      }
+                    : {
+                        width: size - 16,
+                        height: size - 16,
+                        marginLeft: 8,
+                        marginTop: 2,
+                        borderRadius: 999,
+                        overflow: "hidden",
+                        borderWidth: 1.5,
+                        borderColor: "rgba(251, 113, 133, 0.58)",
+                        backgroundColor: "#14060B",
+                        transform: [{ scaleX: facing }],
+                      }
+                }
               >
                 <Image
                   source={
@@ -1322,8 +1360,9 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
                   autoplay={shouldAnimateWebp}
                   transition={110}
                   accessibilityIgnoresInvertColors
-                  contentFit="contain"
-                  style={{ width: size, height: size }}
+                  contentFit={hasFullBodyRiasChibi ? "contain" : "cover"}
+                  contentPosition={hasFullBodyRiasChibi ? "bottom" : "top"}
+                  style={{ width: "100%", height: "100%" }}
                 />
               </View>
             </Animated.View>

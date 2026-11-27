@@ -4,6 +4,7 @@ import {
   buildAkenoPackRequest,
   buildAkenoPoseCacheFileName,
   buildCompanionVoiceCacheFileName,
+  buildRiasPetPoseCacheFileName,
   buildRiasSpriteCacheFileName,
   buildRiasVipCacheFileName,
   inferRiasVipMediaType,
@@ -224,6 +225,16 @@ describe("akenoPosePack", () => {
     const manifest = parseAkenoPosePackManifest({
       version: 2,
       poses: [],
+      riasPetPoses: [
+        {
+          id: "idle",
+          file: "rias/pet/rias-pet-idle.webp",
+          stance: "perched",
+          roles: ["showcase", "settle"],
+          whisper: "Crimson Queen~ ♥",
+          rev: "pet001",
+        },
+      ],
       riasVip: [
         {
           id: "clip01",
@@ -267,6 +278,10 @@ describe("akenoPosePack", () => {
     ]);
     expect(buildCompanionVoiceCacheFileName(manifest!.voices[0]!)).toBe(
       "voice-akeno-ara-ufufu-aud111.mp3",
+    );
+    expect(manifest!.riasPetPoses).toHaveLength(1);
+    expect(buildRiasPetPoseCacheFileName(manifest!.riasPetPoses[0]!)).toBe(
+      "rias-pet-idle-pet001.webp",
     );
   });
 });

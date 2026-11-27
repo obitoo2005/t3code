@@ -194,9 +194,13 @@ import { playUiSound } from "../../lib/uiSoundFx";
 import { useSavedQuickPrompts, useStarredMessages } from "../../state/use-rias-enhancements";
 import {
   emitCompanionWhisper,
-  insertTextIntoActiveComposer,
+  setActiveComposerReplyQuote,
 } from "./activeThreadComposerBridge";
-import { formatSwipeQuoteText, SwipeToQuoteWrapper } from "./SwipeToQuoteWrapper";
+import {
+  formatSwipeQuoteText,
+  formatSwipeReplyPreview,
+  SwipeToQuoteWrapper,
+} from "./SwipeToQuoteWrapper";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
@@ -2116,7 +2120,7 @@ function renderFeedEntry(
     readonly starredMessageIds: ReadonlySet<string>;
     readonly onToggleStarMessage: (messageId: string) => void;
     readonly onSaveQuickPrompt: (text: string) => void;
-    readonly onSwipeQuoteMessage: (text: string) => void;
+    readonly onSwipeQuoteMessage: (text: string, author: "You" | "Rias") => void;
   },
 ) {
   const entry = info.item;
@@ -2498,7 +2502,7 @@ function renderFeedEntry(
         <SwipeToQuoteWrapper
           direction="left"
           enabled={presentation.text.trim().length > 0}
-          onQuote={() => props.onSwipeQuoteMessage(presentation.text)}
+          onQuote={() => props.onSwipeQuoteMessage(presentation.text, "You")}
         >
           <Animated.View
             // A prompt sits close to its own response; the answer's margin separates turns.
@@ -2789,7 +2793,7 @@ function renderFeedEntry(
       <SwipeToQuoteWrapper
         direction="both"
         enabled={renderedText.trim().length > 0}
-        onQuote={() => props.onSwipeQuoteMessage(renderedText)}
+        onQuote={() => props.onSwipeQuoteMessage(renderedText, "Rias")}
       >
         <Animated.View
           className={cn(
@@ -3923,13 +3927,14 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     playUiSound("done");
     emitCompanionWhisper("Saved to Quick Prompts ✦");
   };
-  const handleSwipeQuoteMessage = (rawText: string) => {
+  const handleSwipeQuoteMessage = (rawText: string, author: "You" | "Rias") => {
     const clean = replaceComposerContextReferences(rawText, (ref) => ref.label);
-    const quoted = formatSwipeQuoteText(clean);
-    if (!quoted) return;
-    if (!insertTextIntoActiveComposer(quoted)) return;
+    const quoteBlock = formatSwipeQuoteText(clean);
+    const preview = formatSwipeReplyPreview(clean);
+    if (!quoteBlock || !preview) return;
+    if (!setActiveComposerReplyQuote({ author, preview, quoteBlock })) return;
     playUiSound("shuffle");
-    emitCompanionWhisper("Quoted! Reply away~ ✨");
+    emitCompanionWhisper(author === "Rias" ? "Replying to me~ ♥" : "Reply ready~ ✨");
   };
   const [promptJumperVisible, setPromptJumperVisible] = useState(false);
   const promptJumperHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
