@@ -1,16 +1,46 @@
+import IconBackspace from "@tabler/icons-react-native/IconBackspace";
+import IconEye from "@tabler/icons-react-native/IconEye";
+import IconEyeOff from "@tabler/icons-react-native/IconEyeOff";
+import IconLock from "@tabler/icons-react-native/IconLock";
+import IconLockCheck from "@tabler/icons-react-native/IconLockCheck";
+import IconLockOpen from "@tabler/icons-react-native/IconLockOpen";
+import IconPlayerPauseFilled from "@tabler/icons-react-native/IconPlayerPauseFilled";
+import IconPlayerPlayFilled from "@tabler/icons-react-native/IconPlayerPlayFilled";
+import IconRewindBackward10 from "@tabler/icons-react-native/IconRewindBackward10";
+import IconRewindForward10 from "@tabler/icons-react-native/IconRewindForward10";
+import IconVolume from "@tabler/icons-react-native/IconVolume";
+import IconVolumeOff from "@tabler/icons-react-native/IconVolumeOff";
+import IconX from "@tabler/icons-react-native/IconX";
+import { BlurTargetView, BlurView } from "expo-blur";
+import { GlassView, isGlassEffectAPIAvailable } from "expo-glass-effect";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useGT } from "gt-react-native";
-import { memo, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentRef,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   FlatList,
   Modal,
+  Platform,
   Pressable,
+  StyleSheet,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, {
@@ -25,6 +55,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAkenoPosePack, type SyncedRiasVipPortrait } from "../lib/akenoPosePack";
 import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
@@ -55,6 +86,7 @@ import {
   VIP_ZOOM_SNAP_RESET_THRESHOLD,
   type VipVaultGateState,
 } from "./riasVipVaultLogic";
+import { AndroidGlassPressable } from "./ui/AndroidGlassSurface";
 import { AppText as Text } from "./ui/AppText";
 
 const CARD_SPRING = {
@@ -81,8 +113,155 @@ const PIN_KEYPAD_ROWS = [
 type PinKeypadKey = (typeof PIN_KEYPAD_ROWS)[number][number];
 
 /**
- * Full-body crimson OLED glass spotlight card showcasing all synced VIP Rias portraits
- * (defaults to the full-body standing Grand Hall portrait; tap to cycle through all items).
+ * Pure neutral default Liquid Glass palette matching the app's standard dark Liquid Glass chrome.
+ * Intentionally theme-neutral (zero red/crimson tinting) so VIP Gallery always looks clean and glass-native.
+ */
+const GLASS = {
+  backdrop: "#07070A",
+  backdropOverlay: "rgba(7, 7, 10, 0.86)",
+  stageBg: "#0B0B0F",
+  stageBorder: "rgba(255, 255, 255, 0.12)",
+  chromeTint: "rgba(26, 26, 32, 0.88)",
+  chromeTintLive: "rgba(26, 26, 32, 0.56)",
+  elevatedTint: "rgba(30, 30, 38, 0.92)",
+  elevatedTintLive: "rgba(30, 30, 38, 0.60)",
+  activeTint: "rgba(255, 255, 255, 0.18)",
+  activeTintLive: "rgba(255, 255, 255, 0.22)",
+  subtleTint: "rgba(255, 255, 255, 0.08)",
+  border: "rgba(255, 255, 255, 0.14)",
+  borderTop: "rgba(255, 255, 255, 0.28)",
+  borderBottom: "rgba(255, 255, 255, 0.08)",
+  borderActive: "rgba(255, 255, 255, 0.34)",
+  textPrimary: "#F8FAFC",
+  textSecondary: "rgba(248, 250, 252, 0.66)",
+  textMuted: "rgba(248, 250, 252, 0.46)",
+  accent: "#FFFFFF",
+  trackBg: "rgba(255, 255, 255, 0.22)",
+  dotInactive: "rgba(255, 255, 255, 0.28)",
+  dotEdgeDim: "rgba(255, 255, 255, 0.16)",
+  warning: "#FBBF24",
+  warningFill: "rgba(251, 191, 36, 0.85)",
+} as const;
+
+const LIQUID_GLASS_SHEEN: NonNullable<ViewStyle["backgroundImage"]> = [
+  {
+    type: "linear-gradient",
+    direction: "to bottom",
+    colorStops: [
+      { color: "rgba(255, 255, 255, 0.14)", positions: ["0%"] },
+      { color: "rgba(255, 255, 255, 0.02)", positions: ["38%"] },
+      { color: "rgba(255, 255, 255, 0)", positions: ["76%"] },
+      { color: "rgba(255, 255, 255, 0.05)", positions: ["100%"] },
+    ],
+  },
+];
+
+type VipLiquidGlassTone = "chrome" | "elevated" | "active" | "subtle";
+
+/**
+ * Neutral default Liquid Glass container for VIP Gallery controls, cards, and overlays.
+ * - iOS 26+: native `GlassView` (untinted dark material)
+ * - Android 12+: native `dimezisBlurViewSdk31Plus` live backdrop blur when `blurTarget` is supplied,
+ *   paired with directional specular glass rims and linear-gradient sheen
+ */
+function VipLiquidGlass(props: {
+  readonly children: ReactNode;
+  readonly radius?: number;
+  readonly tone?: VipLiquidGlassTone;
+  readonly blurTarget?: RefObject<ComponentRef<typeof View> | null> | null;
+  readonly style?: StyleProp<ViewStyle>;
+}) {
+  const radius = props.radius ?? 999;
+  const tone = props.tone ?? "chrome";
+  const hasLiveBlur = Platform.OS === "android" && props.blurTarget != null;
+  const supportsIosNativeGlass = Platform.OS === "ios" && isGlassEffectAPIAvailable();
+
+  if (supportsIosNativeGlass) {
+    return (
+      <GlassView
+        glassEffectStyle="regular"
+        colorScheme="dark"
+        style={[
+          {
+            borderRadius: radius,
+            overflow: "hidden",
+            borderWidth: 1,
+            borderColor: tone === "active" ? GLASS.borderActive : GLASS.border,
+          },
+          props.style,
+        ]}
+      >
+        {props.children}
+      </GlassView>
+    );
+  }
+
+  const fill =
+    tone === "active"
+      ? hasLiveBlur
+        ? GLASS.activeTintLive
+        : GLASS.activeTint
+      : tone === "elevated"
+        ? hasLiveBlur
+          ? GLASS.elevatedTintLive
+          : GLASS.elevatedTint
+        : tone === "subtle"
+          ? GLASS.subtleTint
+          : hasLiveBlur
+            ? GLASS.chromeTintLive
+            : GLASS.chromeTint;
+
+  return (
+    <View
+      style={[
+        {
+          borderRadius: radius,
+          overflow: "hidden",
+          backgroundColor: hasLiveBlur ? "transparent" : fill,
+          borderWidth: 1,
+          borderColor: tone === "active" ? GLASS.borderActive : GLASS.border,
+          borderTopColor: GLASS.borderTop,
+          borderBottomColor: GLASS.borderBottom,
+        },
+        props.style,
+      ]}
+    >
+      {hasLiveBlur ? (
+        <BlurView
+          pointerEvents="none"
+          blurTarget={props.blurTarget!}
+          blurMethod="dimezisBlurViewSdk31Plus"
+          blurReductionFactor={6}
+          intensity={46}
+          tint="systemChromeMaterialDark"
+          style={[StyleSheet.absoluteFill, { borderRadius: radius }]}
+        />
+      ) : Platform.OS === "ios" ? (
+        <BlurView
+          pointerEvents="none"
+          intensity={56}
+          tint="systemChromeMaterialDark"
+          style={[StyleSheet.absoluteFill, { borderRadius: radius }]}
+        />
+      ) : null}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: hasLiveBlur ? fill : "transparent",
+            backgroundImage: LIQUID_GLASS_SHEEN,
+          },
+        ]}
+      />
+      {props.children}
+    </View>
+  );
+}
+
+/**
+ * Full-body neutral Liquid Glass spotlight card showcasing all synced VIP portraits
+ * (defaults to the full-body standing portrait; tap to cycle through all items).
  */
 export const RiasVipHeroCard = memo(function RiasVipHeroCard(props: {
   readonly compact?: boolean;
@@ -94,11 +273,12 @@ export const RiasVipHeroCard = memo(function RiasVipHeroCard(props: {
   const [index, setIndex] = useState(0);
   const breathScale = useSharedValue(1);
   const tapScale = useSharedValue(1);
+  const heroBlurTargetRef = useRef<ComponentRef<typeof View>>(null);
 
   const items = pack.riasVip;
   const active = items.length > 0 ? items[index % items.length]! : null;
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs subtle 165Hz slow breathing zoom on the VIP Rias portrait
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs subtle 165Hz slow breathing zoom on the VIP portrait
   useEffect(() => {
     if (!active || !appActive || reducedMotion) {
       cancelAnimation(breathScale);
@@ -153,84 +333,92 @@ export const RiasVipHeroCard = memo(function RiasVipHeroCard(props: {
         borderRadius: 24,
         overflow: "hidden",
         borderWidth: 1,
-        borderColor: "rgba(225, 29, 72, 0.34)",
-        backgroundColor: "#0B0509",
+        borderColor: GLASS.border,
+        borderTopColor: GLASS.borderTop,
+        backgroundColor: GLASS.stageBg,
         boxShadow: [
           {
             offsetX: 0,
             offsetY: 10,
             blurRadius: 28,
-            spreadDistance: 0,
-            color: "rgba(197, 1, 46, 0.24)",
+            spreadDistance: -4,
+            color: "rgba(0, 0, 0, 0.45)",
           },
         ],
       }}
     >
-      <View style={{ width: "100%", aspectRatio, overflow: "hidden", backgroundColor: "#0B0509" }}>
-        <Animated.View style={[{ width: "100%", height: "100%" }, imageAnimStyle]}>
-          <Image
-            source={active.source}
-            contentFit="cover"
-            contentPosition="top"
-            transition={220}
-            accessibilityIgnoresInvertColors
-            style={{ width: "100%", height: "100%" }}
-          />
-        </Animated.View>
+      <View style={{ width: "100%", aspectRatio, overflow: "hidden", backgroundColor: GLASS.stageBg }}>
+        <BlurTargetView ref={heroBlurTargetRef} style={{ width: "100%", height: "100%" }}>
+          <Animated.View style={[{ width: "100%", height: "100%" }, imageAnimStyle]}>
+            <Image
+              source={active.source}
+              contentFit="cover"
+              contentPosition="top"
+              transition={220}
+              accessibilityIgnoresInvertColors
+              style={{ width: "100%", height: "100%" }}
+            />
+          </Animated.View>
+        </BlurTargetView>
 
         <View
           pointerEvents="none"
           style={{
             position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            paddingHorizontal: 16,
-            paddingTop: 28,
-            paddingBottom: 14,
-            backgroundColor: "rgba(10, 4, 8, 0.74)",
-            borderTopWidth: 1,
-            borderTopColor: "rgba(255, 255, 255, 0.08)",
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
+            left: 10,
+            right: 10,
+            bottom: 10,
           }}
         >
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text
-              allowFontScaling={false}
-              numberOfLines={1}
-              style={{ color: "#FFF1F2", fontSize: 14, fontWeight: "700" }}
-            >
-              {active.title ?? "Rias Gremory"}
-            </Text>
-            <Text
-              allowFontScaling={false}
-              numberOfLines={1}
-              style={{ color: "rgba(254, 205, 211, 0.78)", fontSize: 11 }}
-            >
-              {gt("Tap portrait to switch ({current}/{total})", {
-                current: (index % items.length) + 1,
-                total: items.length,
+          <VipLiquidGlass
+            radius={18}
+            tone="chrome"
+            blurTarget={heroBlurTargetRef}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 11,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+            }}
+          >
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text
+                allowFontScaling={false}
+                numberOfLines={1}
+                style={{ color: GLASS.textPrimary, fontSize: 14, fontWeight: "700" }}
+              >
+                {active.title ?? "Rias Gremory"}
+              </Text>
+              <Text
+                allowFontScaling={false}
+                numberOfLines={1}
+                style={{ color: GLASS.textSecondary, fontSize: 11 }}
+              >
+                {gt("Tap portrait to switch ({current}/{total})", {
+                  current: (index % items.length) + 1,
+                  total: items.length,
+                })}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", gap: 5, alignItems: "center" }}>
+              {items.map((item, i) => {
+                const selected = i === index % items.length;
+                return (
+                  <View
+                    key={item.id}
+                    style={{
+                      width: selected ? 16 : 6,
+                      height: 6,
+                      borderRadius: 999,
+                      backgroundColor: selected ? GLASS.accent : GLASS.dotInactive,
+                    }}
+                  />
+                );
               })}
-            </Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 5, alignItems: "center" }}>
-            {items.map((item, i) => {
-              const selected = i === index % items.length;
-              return (
-                <View
-                  key={item.id}
-                  style={{
-                    width: selected ? 16 : 6,
-                    height: 6,
-                    borderRadius: 999,
-                    backgroundColor: selected ? "#FB7185" : "rgba(255, 255, 255, 0.3)",
-                  }}
-                />
-              );
-            })}
-          </View>
+            </View>
+          </VipLiquidGlass>
         </View>
       </View>
     </Pressable>
@@ -263,19 +451,19 @@ const VaultPinDot = memo(function VaultPinDot(props: {
     <Animated.View
       style={[
         {
-          width: 14,
-          height: 14,
+          width: 13,
+          height: 13,
           borderRadius: 999,
           borderWidth: 1.5,
           borderColor: props.isError
-            ? "#FF4D6D"
+            ? GLASS.warning
             : props.filled
-              ? "#FB7185"
-              : "rgba(254, 205, 211, 0.35)",
+              ? GLASS.accent
+              : "rgba(255, 255, 255, 0.34)",
           backgroundColor: props.isError
-            ? "rgba(255, 77, 109, 0.85)"
+            ? GLASS.warningFill
             : props.filled
-              ? "#FB7185"
+              ? GLASS.accent
               : "rgba(255, 255, 255, 0.06)",
         },
         animStyle,
@@ -312,10 +500,10 @@ const VaultPageDot = memo(function VaultPageDot(props: {
           height: props.edgeDim && !props.selected ? 4 : 6,
           borderRadius: 999,
           backgroundColor: props.selected
-            ? "#FB7185"
+            ? GLASS.accent
             : props.edgeDim
-              ? "rgba(255, 255, 255, 0.18)"
-              : "rgba(255, 255, 255, 0.3)",
+              ? GLASS.dotEdgeDim
+              : GLASS.dotInactive,
         },
         animStyle,
       ]}
@@ -331,6 +519,7 @@ const VipPinKeypad = memo(function VipPinKeypad(props: {
   readonly onClose: () => void;
 }) {
   const gt = useGT();
+  const insets = useSafeAreaInsets();
   const reducedMotion = useReduceMotionEnabled();
   const [entry, setEntry] = useState("");
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -434,61 +623,58 @@ const VipPinKeypad = memo(function VipPinKeypad(props: {
     <View
       style={{
         flex: 1,
-        backgroundColor: "rgba(5, 2, 5, 0.98)",
+        backgroundColor: GLASS.backdrop,
         paddingHorizontal: 24,
-        paddingTop: 52,
-        paddingBottom: 36,
+        paddingTop: Math.max(insets.top, 20) + 12,
+        paddingBottom: Math.max(insets.bottom, 20) + 16,
         justifyContent: "space-between",
       }}
     >
       <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
-        <Pressable
-          accessibilityRole="button"
+        <AndroidGlassPressable
           accessibilityLabel={props.mode === "unlock" ? gt("Close VIP Vault") : gt("Cancel PIN setup")}
           onPress={props.onClose}
-          style={{
-            paddingHorizontal: 14,
-            paddingVertical: 7,
-            borderRadius: 999,
-            backgroundColor: "rgba(24, 12, 18, 0.88)",
-            borderWidth: 1,
-            borderColor: "rgba(251, 113, 133, 0.4)",
-          }}
+          bloomRadius={999}
         >
-          <Text allowFontScaling={false} style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}>
-            {props.mode === "unlock" ? gt("Close") : gt("Cancel")}
-          </Text>
-        </Pressable>
+          <VipLiquidGlass
+            radius={999}
+            tone="chrome"
+            style={{
+              width: 38,
+              height: 38,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <IconX size={18} strokeWidth={2} color={GLASS.textPrimary} />
+          </VipLiquidGlass>
+        </AndroidGlassPressable>
       </View>
 
       <View style={{ alignItems: "center", gap: 22 }}>
-        <View style={{ alignItems: "center", gap: 8 }}>
-          <View
+        <View style={{ alignItems: "center", gap: 10 }}>
+          <VipLiquidGlass
+            radius={999}
+            tone="elevated"
             style={{
-              width: 54,
-              height: 54,
-              borderRadius: 999,
+              width: 58,
+              height: 58,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: "rgba(225, 29, 72, 0.16)",
-              borderWidth: 1,
-              borderColor: "rgba(251, 113, 133, 0.42)",
             }}
           >
-            <Text allowFontScaling={false} style={{ fontSize: 22 }}>
-              {props.mode === "unlock" ? "🔐" : "🔒"}
-            </Text>
-          </View>
+            <IconLock size={24} strokeWidth={1.9} color={GLASS.textPrimary} />
+          </VipLiquidGlass>
           <Text
             allowFontScaling={false}
-            style={{ color: "#FFF1F2", fontSize: 20, fontWeight: "700", letterSpacing: -0.3 }}
+            style={{ color: GLASS.textPrimary, fontSize: 20, fontWeight: "700", letterSpacing: -0.3 }}
           >
             {props.mode === "unlock" ? gt("VIP Vault") : gt("Set Vault PIN")}
           </Text>
           <Text
             allowFontScaling={false}
             style={{
-              color: errorText ? "#FB7185" : "rgba(254, 205, 211, 0.72)",
+              color: errorText ? GLASS.warning : GLASS.textSecondary,
               fontSize: 13,
               fontWeight: errorText ? "600" : "400",
             }}
@@ -525,8 +711,6 @@ const VipPinKeypad = memo(function VipPinKeypad(props: {
             >
               {row.map((key) => {
                 const isAction = key === "clear" || key === "backspace";
-                const label =
-                  key === "clear" ? gt("Clear") : key === "backspace" ? "⌫" : key;
                 const accessibilityLabel =
                   key === "clear"
                     ? gt("Clear PIN")
@@ -534,43 +718,41 @@ const VipPinKeypad = memo(function VipPinKeypad(props: {
                       ? gt("Delete digit")
                       : key;
                 return (
-                  <Pressable
+                  <AndroidGlassPressable
                     key={key}
-                    accessibilityRole="button"
                     accessibilityLabel={accessibilityLabel}
                     onPress={() => {
                       void handleKeyPress(key);
                     }}
-                    style={({ pressed }) => ({
-                      width: 70,
-                      height: 70,
-                      borderRadius: 999,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: pressed
-                        ? "rgba(225, 29, 72, 0.34)"
-                        : isAction
-                          ? "rgba(18, 8, 14, 0.74)"
-                          : "rgba(28, 12, 20, 0.88)",
-                      borderWidth: 1,
-                      borderColor: pressed
-                        ? "rgba(251, 113, 133, 0.78)"
-                        : isAction
-                          ? "rgba(255, 255, 255, 0.12)"
-                          : "rgba(251, 113, 133, 0.28)",
-                    })}
+                    bloomRadius={999}
+                    scaleTo={0.91}
                   >
-                    <Text
-                      allowFontScaling={false}
+                    <VipLiquidGlass
+                      radius={999}
+                      tone={isAction ? "subtle" : "elevated"}
                       style={{
-                        color: key === "clear" ? "rgba(254, 205, 211, 0.82)" : "#FFF1F2",
-                        fontSize: key === "clear" ? 13 : key === "backspace" ? 22 : 26,
-                        fontWeight: key === "clear" ? "600" : "700",
+                        width: 72,
+                        height: 72,
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
-                      {label}
-                    </Text>
-                  </Pressable>
+                      {key === "backspace" ? (
+                        <IconBackspace size={23} strokeWidth={1.85} color={GLASS.textPrimary} />
+                      ) : (
+                        <Text
+                          allowFontScaling={false}
+                          style={{
+                            color: key === "clear" ? GLASS.textSecondary : GLASS.textPrimary,
+                            fontSize: key === "clear" ? 13 : 26,
+                            fontWeight: key === "clear" ? "600" : "600",
+                          }}
+                        >
+                          {key === "clear" ? gt("Clear") : key}
+                        </Text>
+                      )}
+                    </VipLiquidGlass>
+                  </AndroidGlassPressable>
                 );
               })}
             </View>
@@ -595,93 +777,117 @@ const VipPinManageOverlay = memo(function VipPinManageOverlay(props: {
         position: "absolute",
         inset: 0,
         zIndex: 40,
-        backgroundColor: "rgba(4, 1, 4, 0.84)",
+        backgroundColor: GLASS.backdropOverlay,
         alignItems: "center",
         justifyContent: "center",
         paddingHorizontal: 28,
       }}
     >
-      <View
+      <VipLiquidGlass
+        radius={26}
+        tone="elevated"
         style={{
           width: "100%",
           maxWidth: 340,
-          borderRadius: 24,
           padding: 20,
           gap: 12,
-          backgroundColor: "#13070D",
-          borderWidth: 1,
-          borderColor: "rgba(251, 113, 133, 0.36)",
         }}
       >
-        <View style={{ gap: 4, marginBottom: 4 }}>
-          <Text allowFontScaling={false} style={{ color: "#FFF1F2", fontSize: 17, fontWeight: "700" }}>
-            {gt("Vault PIN Protection")}
-          </Text>
-          <Text
-            allowFontScaling={false}
-            style={{ color: "rgba(254, 205, 211, 0.72)", fontSize: 12.5 }}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 2 }}>
+          <VipLiquidGlass
+            radius={999}
+            tone="subtle"
+            style={{ width: 34, height: 34, alignItems: "center", justifyContent: "center" }}
           >
-            {gt("A 4-digit PIN is required each time the hidden VIP Vault opens.")}
-          </Text>
+            <IconLockCheck size={17} strokeWidth={1.9} color={GLASS.textPrimary} />
+          </VipLiquidGlass>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text allowFontScaling={false} style={{ color: GLASS.textPrimary, fontSize: 16, fontWeight: "700" }}>
+              {gt("Vault PIN Protection")}
+            </Text>
+            <Text
+              allowFontScaling={false}
+              style={{ color: GLASS.textSecondary, fontSize: 12 }}
+            >
+              {gt("Required whenever VIP Vault opens.")}
+            </Text>
+          </View>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
+        <AndroidGlassPressable
           accessibilityLabel={gt("Change 4-digit PIN")}
           onPress={props.onChangePin}
-          style={({ pressed }) => ({
-            paddingVertical: 12,
-            borderRadius: 14,
-            alignItems: "center",
-            backgroundColor: pressed ? "rgba(225, 29, 72, 0.3)" : "rgba(251, 113, 133, 0.16)",
-            borderWidth: 1,
-            borderColor: "rgba(251, 113, 133, 0.42)",
-          })}
+          bloomRadius={16}
+          scaleTo={0.96}
         >
-          <Text allowFontScaling={false} style={{ color: "#FFE4E6", fontSize: 14, fontWeight: "700" }}>
-            {gt("Change 4-Digit PIN")}
-          </Text>
-        </Pressable>
+          <VipLiquidGlass
+            radius={16}
+            tone="active"
+            style={{
+              paddingVertical: 12,
+              paddingHorizontal: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            <IconLock size={16} strokeWidth={2} color={GLASS.textPrimary} />
+            <Text allowFontScaling={false} style={{ color: GLASS.textPrimary, fontSize: 14, fontWeight: "600" }}>
+              {gt("Change 4-Digit PIN")}
+            </Text>
+          </VipLiquidGlass>
+        </AndroidGlassPressable>
 
-        <Pressable
-          accessibilityRole="button"
+        <AndroidGlassPressable
           accessibilityLabel={gt("Remove PIN")}
           onPress={props.onRemovePin}
-          style={({ pressed }) => ({
-            paddingVertical: 12,
-            borderRadius: 14,
-            alignItems: "center",
-            backgroundColor: pressed ? "rgba(225, 29, 72, 0.4)" : "rgba(159, 18, 57, 0.24)",
-            borderWidth: 1,
-            borderColor: "rgba(244, 63, 94, 0.48)",
-          })}
+          bloomRadius={16}
+          scaleTo={0.96}
         >
-          <Text allowFontScaling={false} style={{ color: "#FDA4AF", fontSize: 14, fontWeight: "700" }}>
-            {gt("Remove PIN")}
-          </Text>
-        </Pressable>
+          <VipLiquidGlass
+            radius={16}
+            tone="chrome"
+            style={{
+              paddingVertical: 12,
+              paddingHorizontal: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            <IconLockOpen size={16} strokeWidth={2} color={GLASS.textSecondary} />
+            <Text allowFontScaling={false} style={{ color: GLASS.textPrimary, fontSize: 14, fontWeight: "600" }}>
+              {gt("Remove PIN")}
+            </Text>
+          </VipLiquidGlass>
+        </AndroidGlassPressable>
 
-        <Pressable
-          accessibilityRole="button"
+        <AndroidGlassPressable
           accessibilityLabel={gt("Cancel")}
           onPress={props.onDismiss}
-          style={({ pressed }) => ({
-            paddingVertical: 11,
-            borderRadius: 14,
-            alignItems: "center",
-            backgroundColor: pressed ? "rgba(255, 255, 255, 0.1)" : "rgba(255, 255, 255, 0.05)",
-            borderWidth: 1,
-            borderColor: "rgba(255, 255, 255, 0.1)",
-          })}
+          bloomRadius={16}
+          scaleTo={0.96}
         >
-          <Text
-            allowFontScaling={false}
-            style={{ color: "rgba(255, 241, 242, 0.8)", fontSize: 13.5, fontWeight: "600" }}
+          <VipLiquidGlass
+            radius={16}
+            tone="subtle"
+            style={{
+              paddingVertical: 11,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
-            {gt("Cancel")}
-          </Text>
-        </Pressable>
-      </View>
+            <Text
+              allowFontScaling={false}
+              style={{ color: GLASS.textSecondary, fontSize: 13.5, fontWeight: "600" }}
+            >
+              {gt("Cancel")}
+            </Text>
+          </VipLiquidGlass>
+        </AndroidGlassPressable>
+      </VipLiquidGlass>
     </View>
   );
 });
@@ -713,6 +919,7 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
     }
   }
 
+  const videoBlurTargetRef = useRef<ComponentRef<typeof View>>(null);
   const isScrubbingRef = useRef(false);
   const trackWidthRef = useRef(0);
   const durationRef = useRef(0);
@@ -888,298 +1095,311 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
   const showHud = !hudHidden || userPaused || scrubTime !== null;
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#050205" }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={userPaused ? gt("Play video") : gt("Pause video")}
-        onPress={handleTogglePlayPause}
-        style={{ flex: 1 }}
-      >
-        <VideoView
-          player={player}
-          contentFit={isWideOrSquare ? "contain" : "cover"}
-          nativeControls={false}
-          surfaceType="textureView"
-          allowsPictureInPicture={false}
-          style={{ width: "100%", height: "100%" }}
-        />
+    <View style={{ flex: 1, backgroundColor: GLASS.stageBg }}>
+      <BlurTargetView ref={videoBlurTargetRef} style={{ flex: 1 }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={userPaused ? gt("Play video") : gt("Pause video")}
+          onPress={handleTogglePlayPause}
+          style={{ flex: 1 }}
+        >
+          <VideoView
+            player={player}
+            contentFit={isWideOrSquare ? "contain" : "cover"}
+            nativeControls={false}
+            surfaceType="textureView"
+            allowsPictureInPicture={false}
+            style={{ width: "100%", height: "100%" }}
+          />
+        </Pressable>
+      </BlurTargetView>
 
-        {userPaused ? (
-          <View
-            pointerEvents="none"
+      {userPaused ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            inset: 0,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <VipLiquidGlass
+            radius={999}
+            tone="elevated"
+            blurTarget={videoBlurTargetRef}
             style={{
-              position: "absolute",
-              inset: 0,
+              width: 64,
+              height: 64,
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <View
-              style={{
-                width: 64,
-                height: 64,
-                borderRadius: 999,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "rgba(18, 6, 12, 0.78)",
-                borderWidth: 1.5,
-                borderColor: "rgba(251, 113, 133, 0.72)",
-              }}
-            >
-              <Text
-                allowFontScaling={false}
-                style={{ color: "#FFE4E6", fontSize: 24, marginLeft: 4 }}
-              >
-                ▶
-              </Text>
+            <View style={{ marginLeft: 3 }}>
+              <IconPlayerPlayFilled size={26} color={GLASS.textPrimary} />
             </View>
-          </View>
-        ) : null}
-      </Pressable>
+          </VipLiquidGlass>
+        </View>
+      ) : null}
 
-      {/* Top-left explicit HUD hide/show toggle + top-right sound pill */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={showHud ? gt("Hide video controls") : gt("Show video controls")}
-        onPress={() => {
-          void Haptics.selectionAsync();
-          setHudHidden((hidden) => !hidden);
-        }}
+      {/* Top-left HUD visibility toggle + top-right audio toggle (native Liquid Glass icon pills) */}
+      <View
         style={{
           position: "absolute",
           top: 14,
           left: 14,
           zIndex: 24,
           elevation: 24,
-          paddingHorizontal: 11,
-          paddingVertical: 6,
-          borderRadius: 999,
-          backgroundColor: "rgba(18, 6, 12, 0.84)",
-          borderWidth: 1,
-          borderColor: "rgba(255, 255, 255, 0.18)",
         }}
       >
-        <Text
-          allowFontScaling={false}
-          style={{ color: "rgba(255, 228, 230, 0.88)", fontSize: 11, fontWeight: "700" }}
+        <AndroidGlassPressable
+          accessibilityLabel={showHud ? gt("Hide video controls") : gt("Show video controls")}
+          onPress={() => {
+            void Haptics.selectionAsync();
+            setHudHidden((hidden) => !hidden);
+          }}
+          bloomRadius={999}
         >
-          {showHud ? gt("Hide HUD") : gt("Controls")}
-        </Text>
-      </Pressable>
+          <VipLiquidGlass
+            radius={999}
+            tone="chrome"
+            blurTarget={videoBlurTargetRef}
+            style={{
+              width: 38,
+              height: 38,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {showHud ? (
+              <IconEyeOff size={18} strokeWidth={1.9} color={GLASS.textPrimary} />
+            ) : (
+              <IconEye size={18} strokeWidth={1.9} color={GLASS.textPrimary} />
+            )}
+          </VipLiquidGlass>
+        </AndroidGlassPressable>
+      </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={props.muted ? gt("Unmute video audio") : gt("Mute video audio")}
-        onPress={() => {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          props.onToggleMuted();
-        }}
+      <View
         style={{
           position: "absolute",
           top: 14,
           right: 14,
           zIndex: 24,
           elevation: 24,
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 999,
-          backgroundColor: "rgba(18, 6, 12, 0.84)",
-          borderWidth: 1,
-          borderColor: props.muted ? "rgba(255, 255, 255, 0.22)" : "rgba(251, 113, 133, 0.55)",
         }}
       >
-        <Text
-          allowFontScaling={false}
-          style={{ color: "#FFE4E6", fontSize: 11.5, fontWeight: "700" }}
+        <AndroidGlassPressable
+          accessibilityLabel={props.muted ? gt("Unmute video audio") : gt("Mute video audio")}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            props.onToggleMuted();
+          }}
+          bloomRadius={999}
         >
-          {props.muted ? gt("🔇 Muted") : gt("🔊 Sound")}
-        </Text>
-      </Pressable>
+          <VipLiquidGlass
+            radius={999}
+            tone={props.muted ? "chrome" : "active"}
+            blurTarget={videoBlurTargetRef}
+            style={{
+              width: 38,
+              height: 38,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {props.muted ? (
+              <IconVolumeOff size={18} strokeWidth={1.9} color={GLASS.textSecondary} />
+            ) : (
+              <IconVolume size={18} strokeWidth={1.9} color={GLASS.textPrimary} />
+            )}
+          </VipLiquidGlass>
+        </AndroidGlassPressable>
+      </View>
 
       {showHud ? (
         <View
           style={{
-            marginHorizontal: 12,
-            marginBottom: 12,
-            marginTop: 4,
+            position: "absolute",
+            left: 12,
+            right: 12,
+            bottom: 12,
             zIndex: 24,
             elevation: 24,
-            paddingHorizontal: 14,
-            paddingTop: 10,
-            paddingBottom: 12,
-            borderRadius: 20,
-            backgroundColor: "rgba(14, 6, 11, 0.96)",
-            borderWidth: 1,
-            borderColor: "rgba(251, 113, 133, 0.36)",
-            gap: 6,
           }}
         >
-          <GestureDetector gesture={scrubGesture}>
-            <View
-              onLayout={(event) => {
-                const nextW = event.nativeEvent.layout.width;
-                if (nextW > 0) {
-                  trackWidthRef.current = nextW;
-                  setTrackWidth(nextW);
-                }
-              }}
-              style={{
-                height: 30,
-                justifyContent: "center",
-              }}
-            >
+          <VipLiquidGlass
+            radius={22}
+            tone="elevated"
+            blurTarget={videoBlurTargetRef}
+            style={{
+              paddingHorizontal: 16,
+              paddingTop: 10,
+              paddingBottom: 12,
+              gap: 6,
+            }}
+          >
+            <GestureDetector gesture={scrubGesture}>
               <View
+                onLayout={(event) => {
+                  const nextW = event.nativeEvent.layout.width;
+                  if (nextW > 0) {
+                    trackWidthRef.current = nextW;
+                    setTrackWidth(nextW);
+                  }
+                }}
                 style={{
-                  height: 5,
-                  borderRadius: 999,
-                  backgroundColor: "rgba(255, 255, 255, 0.22)",
-                  overflow: "hidden",
+                  height: 30,
+                  justifyContent: "center",
                 }}
               >
                 <View
                   style={{
-                    width: `${Math.round(progress * 1000) / 10}%`,
-                    height: "100%",
+                    height: 4.5,
                     borderRadius: 999,
-                    backgroundColor: "#FB7185",
+                    backgroundColor: GLASS.trackBg,
+                    overflow: "hidden",
                   }}
-                />
+                >
+                  <View
+                    style={{
+                      width: `${Math.round(progress * 1000) / 10}%`,
+                      height: "100%",
+                      borderRadius: 999,
+                      backgroundColor: GLASS.accent,
+                    }}
+                  />
+                </View>
+                {trackWidth > 0 ? (
+                  <View
+                    pointerEvents="none"
+                    style={{
+                      position: "absolute",
+                      left: Math.max(0, Math.min(trackWidth - 13, progress * trackWidth - 6.5)),
+                      width: 13,
+                      height: 13,
+                      borderRadius: 999,
+                      backgroundColor: GLASS.accent,
+                      boxShadow: [
+                        {
+                          offsetX: 0,
+                          offsetY: 1,
+                          blurRadius: 4,
+                          spreadDistance: 0,
+                          color: "rgba(0, 0, 0, 0.45)",
+                        },
+                      ],
+                    }}
+                  />
+                ) : null}
               </View>
-              {trackWidth > 0 ? (
-                <View
-                  pointerEvents="none"
-                  style={{
-                    position: "absolute",
-                    left: Math.max(0, Math.min(trackWidth - 14, progress * trackWidth - 7)),
-                    width: 14,
-                    height: 14,
-                    borderRadius: 999,
-                    backgroundColor: "#FFF1F2",
-                    borderWidth: 2,
-                    borderColor: "#FB7185",
-                  }}
-                />
-              ) : null}
-            </View>
-          </GestureDetector>
+            </GestureDetector>
 
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginTop: -4,
-            }}
-          >
-            <Text
-              allowFontScaling={false}
+            <View
               style={{
-                color: "#FFE4E6",
-                fontSize: 11,
-                fontWeight: "600",
-                fontVariant: ["tabular-nums"],
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: -4,
               }}
-            >
-              {formatVideoTimestamp(displayedTime)}
-            </Text>
-            <Text
-              allowFontScaling={false}
-              style={{
-                color: "rgba(254, 205, 211, 0.72)",
-                fontSize: 11,
-                fontWeight: "600",
-                fontVariant: ["tabular-nums"],
-              }}
-            >
-              {formatVideoTimestamp(duration)}
-            </Text>
-          </View>
-
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 16,
-              paddingTop: 2,
-            }}
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={gt("Rewind 10 seconds")}
-              onPress={() => handleSkipBy(-VIP_VIDEO_SKIP_SECONDS)}
-              style={({ pressed }) => ({
-                paddingHorizontal: 14,
-                paddingVertical: 7,
-                borderRadius: 999,
-                backgroundColor: pressed
-                  ? "rgba(251, 113, 133, 0.28)"
-                  : "rgba(255, 255, 255, 0.08)",
-                borderWidth: 1,
-                borderColor: "rgba(251, 113, 133, 0.3)",
-              })}
             >
               <Text
                 allowFontScaling={false}
-                style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}
+                style={{
+                  color: GLASS.textPrimary,
+                  fontSize: 11,
+                  fontWeight: "600",
+                  fontVariant: ["tabular-nums"],
+                }}
               >
-                {"⏪ -10s"}
+                {formatVideoTimestamp(displayedTime)}
               </Text>
-            </Pressable>
+              <Text
+                allowFontScaling={false}
+                style={{
+                  color: GLASS.textSecondary,
+                  fontSize: 11,
+                  fontWeight: "600",
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {formatVideoTimestamp(duration)}
+              </Text>
+            </View>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={userPaused ? gt("Play video") : gt("Pause video")}
-              onPress={handleTogglePlayPause}
-              style={({ pressed }) => ({
-                width: 44,
-                height: 44,
-                borderRadius: 999,
+            <View
+              style={{
+                flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: pressed
-                  ? "rgba(225, 29, 72, 0.55)"
-                  : "rgba(225, 29, 72, 0.36)",
-                borderWidth: 1.5,
-                borderColor: "rgba(251, 113, 133, 0.72)",
-              })}
+                gap: 20,
+                paddingTop: 2,
+              }}
             >
-              <Text
-                allowFontScaling={false}
-                style={{
-                  color: "#FFF1F2",
-                  fontSize: userPaused ? 17 : 15,
-                  fontWeight: "800",
-                  marginLeft: userPaused ? 2 : 0,
-                }}
+              <AndroidGlassPressable
+                accessibilityLabel={gt("Rewind 10 seconds")}
+                onPress={() => handleSkipBy(-VIP_VIDEO_SKIP_SECONDS)}
+                bloomRadius={999}
               >
-                {userPaused ? "▶" : "❚❚"}
-              </Text>
-            </Pressable>
+                <VipLiquidGlass
+                  radius={999}
+                  tone="subtle"
+                  style={{
+                    width: 42,
+                    height: 42,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <IconRewindBackward10 size={20} strokeWidth={1.9} color={GLASS.textPrimary} />
+                </VipLiquidGlass>
+              </AndroidGlassPressable>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={gt("Forward 10 seconds")}
-              onPress={() => handleSkipBy(VIP_VIDEO_SKIP_SECONDS)}
-              style={({ pressed }) => ({
-                paddingHorizontal: 14,
-                paddingVertical: 7,
-                borderRadius: 999,
-                backgroundColor: pressed
-                  ? "rgba(251, 113, 133, 0.28)"
-                  : "rgba(255, 255, 255, 0.08)",
-                borderWidth: 1,
-                borderColor: "rgba(251, 113, 133, 0.3)",
-              })}
-            >
-              <Text
-                allowFontScaling={false}
-                style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}
+              <AndroidGlassPressable
+                accessibilityLabel={userPaused ? gt("Play video") : gt("Pause video")}
+                onPress={handleTogglePlayPause}
+                bloomRadius={999}
               >
-                {"+10s ⏩"}
-              </Text>
-            </Pressable>
-          </View>
+                <VipLiquidGlass
+                  radius={999}
+                  tone="active"
+                  style={{
+                    width: 48,
+                    height: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {userPaused ? (
+                    <View style={{ marginLeft: 2 }}>
+                      <IconPlayerPlayFilled size={21} color={GLASS.textPrimary} />
+                    </View>
+                  ) : (
+                    <IconPlayerPauseFilled size={21} color={GLASS.textPrimary} />
+                  )}
+                </VipLiquidGlass>
+              </AndroidGlassPressable>
+
+              <AndroidGlassPressable
+                accessibilityLabel={gt("Forward 10 seconds")}
+                onPress={() => handleSkipBy(VIP_VIDEO_SKIP_SECONDS)}
+                bloomRadius={999}
+              >
+                <VipLiquidGlass
+                  radius={999}
+                  tone="subtle"
+                  style={{
+                    width: 42,
+                    height: 42,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <IconRewindForward10 size={20} strokeWidth={1.9} color={GLASS.textPrimary} />
+                </VipLiquidGlass>
+              </AndroidGlassPressable>
+            </View>
+          </VipLiquidGlass>
         </View>
       ) : null}
     </View>
@@ -1404,7 +1624,7 @@ const VipImageSlide = memo(function VipImageSlide(props: {
     <GestureDetector gesture={gesture}>
       <View
         onLayout={handleLayout}
-        style={{ flex: 1, overflow: "hidden", backgroundColor: "#050205" }}
+        style={{ flex: 1, overflow: "hidden", backgroundColor: GLASS.stageBg }}
       >
         <Animated.View style={[{ width: "100%", height: "100%" }, animatedStyle]}>
           <Image
@@ -1423,15 +1643,17 @@ const VipImageSlide = memo(function VipImageSlide(props: {
 });
 
 /**
- * Full-screen OLED Hidden VIP Vault 2.0 modal viewer (triggered exclusively by long-pressing
- * the top-left Rias Code header icon). Supports optional 4-digit SecureStore PIN lock,
- * horizontal swipe paging, looping video+audio playback, and pinch/pan/double-tap zoom.
+ * Full-screen Liquid Glass Hidden VIP Vault modal viewer (triggered exclusively by long-pressing
+ * the top-left Rias Code header icon). Uses pure default neutral Liquid Glass surfaces and the
+ * app's standard Tabler vector icons, with optional 4-digit SecureStore PIN lock, horizontal swipe
+ * paging, looping video+audio playback, and pinch/pan/double-tap zoom.
  */
 export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
   readonly visible: boolean;
   readonly onClose: () => void;
 }) {
   const gt = useGT();
+  const insets = useSafeAreaInsets();
   const pack = useAkenoPosePack({ autoSync: false });
   const appActive = useAppActive();
 
@@ -1539,15 +1761,15 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
     ({ item, index }: { readonly item: SyncedRiasVipPortrait; readonly index: number }) => {
       const isSlideActive = index === safeActiveIndex;
       return (
-        <View style={{ width: stageWidth, height: "100%", paddingHorizontal: 16 }}>
+        <View style={{ width: stageWidth, height: "100%", paddingHorizontal: 14 }}>
           <View
             style={{
               flex: 1,
               borderRadius: 28,
               overflow: "hidden",
               borderWidth: 1,
-              borderColor: "rgba(225, 29, 72, 0.42)",
-              backgroundColor: "#080307",
+              borderColor: GLASS.stageBorder,
+              backgroundColor: GLASS.stageBg,
             }}
           >
             {item.mediaType === "video" ? (
@@ -1595,11 +1817,12 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
       transparent
       animationType="fade"
       statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={props.onClose}
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
         {isPinLoading ? (
-          <View style={{ flex: 1, backgroundColor: "rgba(5, 2, 5, 0.98)" }} />
+          <View style={{ flex: 1, backgroundColor: GLASS.backdrop }} />
         ) : gateState === "locked" ? (
           <VipPinKeypad
             mode="unlock"
@@ -1623,70 +1846,73 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
           <View
             style={{
               flex: 1,
-              backgroundColor: "rgba(5, 2, 5, 0.96)",
-              paddingTop: 48,
-              paddingBottom: 28,
+              backgroundColor: GLASS.backdrop,
+              paddingTop: Math.max(insets.top, 20) + 10,
+              paddingBottom: Math.max(insets.bottom, 14) + 12,
             }}
           >
-            {/* Top header bar: PIN control (left) + Close pill (right) */}
+            {/* Top header bar: Liquid Glass PIN pill (left) + circular Close icon (right) */}
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingHorizontal: 20,
-                paddingBottom: 14,
+                paddingHorizontal: 18,
+                paddingBottom: 12,
                 zIndex: 20,
               }}
             >
-              <Pressable
-                accessibilityRole="button"
+              <AndroidGlassPressable
                 accessibilityLabel={storedPin ? gt("Manage VIP Vault PIN") : gt("Set VIP Vault PIN")}
                 onPress={() => {
                   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setPinOverlay(storedPin ? "manage" : "set");
                 }}
-                style={{
-                  paddingHorizontal: 13,
-                  paddingVertical: 7,
-                  borderRadius: 999,
-                  backgroundColor: storedPin
-                    ? "rgba(225, 29, 72, 0.24)"
-                    : "rgba(24, 12, 18, 0.88)",
-                  borderWidth: 1,
-                  borderColor: storedPin
-                    ? "rgba(251, 113, 133, 0.56)"
-                    : "rgba(251, 113, 133, 0.34)",
-                }}
+                bloomRadius={999}
               >
-                <Text
-                  allowFontScaling={false}
-                  style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}
+                <VipLiquidGlass
+                  radius={999}
+                  tone={storedPin ? "active" : "chrome"}
+                  style={{
+                    height: 38,
+                    paddingHorizontal: 14,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
                 >
-                  {storedPin ? gt("🔐 PIN On") : gt("🔒 Set PIN")}
-                </Text>
-              </Pressable>
+                  {storedPin ? (
+                    <IconLockCheck size={15} strokeWidth={2} color={GLASS.textPrimary} />
+                  ) : (
+                    <IconLock size={15} strokeWidth={2} color={GLASS.textSecondary} />
+                  )}
+                  <Text
+                    allowFontScaling={false}
+                    style={{ color: GLASS.textPrimary, fontSize: 12.5, fontWeight: "600" }}
+                  >
+                    {storedPin ? gt("PIN On") : gt("Set PIN")}
+                  </Text>
+                </VipLiquidGlass>
+              </AndroidGlassPressable>
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={gt("Close VIP Rias gallery")}
+              <AndroidGlassPressable
+                accessibilityLabel={gt("Close VIP gallery")}
                 onPress={props.onClose}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 999,
-                  backgroundColor: "rgba(24, 12, 18, 0.88)",
-                  borderWidth: 1,
-                  borderColor: "rgba(251, 113, 133, 0.4)",
-                }}
+                bloomRadius={999}
               >
-                <Text
-                  allowFontScaling={false}
-                  style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}
+                <VipLiquidGlass
+                  radius={999}
+                  tone="chrome"
+                  style={{
+                    width: 38,
+                    height: 38,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
                 >
-                  {gt("Close")}
-                </Text>
-              </Pressable>
+                  <IconX size={18} strokeWidth={2} color={GLASS.textPrimary} />
+                </VipLiquidGlass>
+              </AndroidGlassPressable>
             </View>
 
             {/* Horizontal swipe paging media stage */}
@@ -1717,62 +1943,60 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
               ) : null}
             </View>
 
-            {/* Footer bar: Title, count, and capped animated crimson dots */}
-            <View
-              style={{
-                marginHorizontal: 16,
-                marginTop: 14,
-                paddingHorizontal: 18,
-                paddingVertical: 14,
-                borderRadius: 22,
-                backgroundColor: "rgba(12, 5, 9, 0.9)",
-                borderWidth: 1,
-                borderColor: "rgba(225, 29, 72, 0.28)",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-              }}
-            >
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text
-                  allowFontScaling={false}
-                  numberOfLines={1}
-                  style={{ color: "#FFF1F2", fontSize: 15, fontWeight: "700" }}
-                >
-                  {activeItem.title ?? "Rias Gremory"}
-                </Text>
-                <Text
-                  allowFontScaling={false}
-                  numberOfLines={1}
-                  style={{ color: "rgba(254, 205, 211, 0.78)", fontSize: 11.5 }}
-                >
-                  {activeItem.mediaType === "video"
-                    ? gt("{current}/{total} • Swipe • Tap to pause", {
-                        current: safeActiveIndex + 1,
-                        total: items.length,
-                      })
-                    : gt("{current}/{total} • Swipe • Pinch to zoom", {
-                        current: safeActiveIndex + 1,
-                        total: items.length,
-                      })}
-                </Text>
-              </View>
+            {/* Footer bar: Liquid Glass capsule with title, count, and clean neutral pagination dots */}
+            <View style={{ paddingHorizontal: 14, marginTop: 12 }}>
+              <VipLiquidGlass
+                radius={22}
+                tone="chrome"
+                style={{
+                  paddingHorizontal: 18,
+                  paddingVertical: 13,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text
+                    allowFontScaling={false}
+                    numberOfLines={1}
+                    style={{ color: GLASS.textPrimary, fontSize: 14.5, fontWeight: "700" }}
+                  >
+                    {activeItem.title ?? "Rias Gremory"}
+                  </Text>
+                  <Text
+                    allowFontScaling={false}
+                    numberOfLines={1}
+                    style={{ color: GLASS.textSecondary, fontSize: 11.5 }}
+                  >
+                    {activeItem.mediaType === "video"
+                      ? gt("{current}/{total} • Swipe • Tap to pause", {
+                          current: safeActiveIndex + 1,
+                          total: items.length,
+                        })
+                      : gt("{current}/{total} • Swipe • Pinch to zoom", {
+                          current: safeActiveIndex + 1,
+                          total: items.length,
+                        })}
+                  </Text>
+                </View>
 
-              <View style={{ flexDirection: "row", gap: 5, alignItems: "center", flexShrink: 0 }}>
-                {dotWindow.indices.map((dotIndex, pos) => {
-                  const isEdgeDim =
-                    (pos === 0 && dotWindow.hasLeadingMore) ||
-                    (pos === dotWindow.indices.length - 1 && dotWindow.hasTrailingMore);
-                  return (
-                    <VaultPageDot
-                      key={items[dotIndex]?.id ?? dotIndex}
-                      selected={dotIndex === safeActiveIndex}
-                      edgeDim={isEdgeDim}
-                    />
-                  );
-                })}
-              </View>
+                <View style={{ flexDirection: "row", gap: 5, alignItems: "center", flexShrink: 0 }}>
+                  {dotWindow.indices.map((dotIndex, pos) => {
+                    const isEdgeDim =
+                      (pos === 0 && dotWindow.hasLeadingMore) ||
+                      (pos === dotWindow.indices.length - 1 && dotWindow.hasTrailingMore);
+                    return (
+                      <VaultPageDot
+                        key={items[dotIndex]?.id ?? dotIndex}
+                        selected={dotIndex === safeActiveIndex}
+                        edgeDim={isEdgeDim}
+                      />
+                    );
+                  })}
+                </View>
+              </VipLiquidGlass>
             </View>
 
             {pinOverlay === "manage" ? (

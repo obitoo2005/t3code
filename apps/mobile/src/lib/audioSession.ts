@@ -9,6 +9,16 @@ type AudioSessionToken = {
 
 let owner: AudioSessionToken | null = null;
 let pending = Promise.resolve();
+let audioSessionEpoch = 0;
+
+/**
+ * Monotonic counter bumped whenever the shared audio session mutates native audio mode
+ * or global audio active state (e.g. voice recording teardown calls `setIsAudioActiveAsync(false)`).
+ * Ambient SFX / companion voice players compare against this epoch to re-arm playback mode.
+ */
+export function getAudioSessionEpoch(): number {
+  return audioSessionEpoch;
+}
 
 // Native session calls are async. Finish an old activation before releasing it
 // or configuring its successor, so it cannot reactivate a released session.
@@ -81,8 +91,10 @@ export function activateAudioSession(
       playsInSilentMode: true,
       shouldPlayInBackground: false,
     });
+    audioSessionEpoch += 1;
     if (!isAudioSessionOwner(token)) return false;
     await setIsAudioActiveAsync(true);
+    audioSessionEpoch += 1;
     return isAudioSessionOwner(token);
   });
 }
@@ -92,10 +104,16 @@ export function releaseAudioSession(token: AudioSessionToken): Promise<void> {
   return enqueue(async () => {
     if (owner !== token) return;
     try {
-      if (token.kind === "recording") await setAudioModeAsync({ allowsRecording: false });
+      if (token.kind === "recording") {
+        await setAudioModeAsync({ allowsRecording: false });
+        audioSessionEpoch += 1;
+      }
     } finally {
       if (owner === token) {
-        if (token.kind === "recording") await setIsAudioActiveAsync(false);
+        if (token.kind === "recording") {
+          await setIsAudioActiveAsync(false);
+          audioSessionEpoch += 1;
+        }
         // Expo pause releases the native session without disabling its global playback gate.
         // Repeat it after any pending activation, even if playback never started.
         token.onRelease?.();

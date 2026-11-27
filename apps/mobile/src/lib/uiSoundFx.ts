@@ -1,7 +1,12 @@
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  setIsAudioActiveAsync,
+  type AudioPlayer,
+} from "expo-audio";
 import { Platform } from "react-native";
 
-import { isAudioSessionBusy } from "./audioSession";
+import { getAudioSessionEpoch, isAudioSessionBusy } from "./audioSession";
 
 export type UiSoundKind = "send" | "done" | "shuffle";
 
@@ -18,7 +23,7 @@ const SOUND_VOLUMES: Readonly<Record<UiSoundKind, number>> = {
 };
 
 let soundFxEnabled = true;
-let audioModeConfigured = false;
+let configuredSessionEpoch = -1;
 const players = new Map<UiSoundKind, AudioPlayer>();
 
 export function setUiSoundFxEnabled(enabled: boolean): void {
@@ -43,17 +48,19 @@ function getOrCreatePlayer(kind: UiSoundKind): AudioPlayer | null {
 }
 
 async function ensureAmbientAudioMode(): Promise<void> {
-  if (audioModeConfigured) return;
-  audioModeConfigured = true;
+  const epoch = getAudioSessionEpoch();
+  if (configuredSessionEpoch === epoch) return;
   try {
     await setAudioModeAsync({
       allowsRecording: false,
       interruptionMode: "mixWithOthers",
-      playsInSilentMode: false,
+      playsInSilentMode: true,
       shouldPlayInBackground: false,
     });
+    await setIsAudioActiveAsync(true);
+    configuredSessionEpoch = epoch;
   } catch {
-    audioModeConfigured = false;
+    configuredSessionEpoch = -1;
   }
 }
 

@@ -1,4 +1,9 @@
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  setIsAudioActiveAsync,
+  type AudioPlayer,
+} from "expo-audio";
 import { Platform } from "react-native";
 
 import {
@@ -7,16 +12,17 @@ import {
   type CompanionVoiceRole,
   type SyncedCompanionVoice,
 } from "./akenoPosePack";
-import { isAudioSessionBusy } from "./audioSession";
+import { getAudioSessionEpoch, isAudioSessionBusy } from "./audioSession";
 import { isCompanionVoiceFxEnabled } from "./voiceFxState";
 
-const VOICE_VOLUME = 0.85;
+const VOICE_VOLUME = 1.0;
 const MAX_CACHED_PLAYERS = 12;
 const GLOBAL_VOICE_COOLDOWN_MS = 850;
 const DONE_VOICE_COOLDOWN_MS = 450;
 
-let audioModeConfigured = false;
+let configuredSessionEpoch = -1;
 let lastVoicePlayedAt = 0;
+let activeVoicePlayer: AudioPlayer | null = null;
 const lastPlayedIdByCharacter: Partial<Record<CompanionVoiceCharacter, string>> = {};
 const cachedPlayers = new Map<string, AudioPlayer>();
 
@@ -84,17 +90,19 @@ function getOrCreateVoicePlayer(uri: string): AudioPlayer | null {
 }
 
 async function ensureAmbientVoiceAudioMode(): Promise<void> {
-  if (audioModeConfigured) return;
-  audioModeConfigured = true;
+  const epoch = getAudioSessionEpoch();
+  if (configuredSessionEpoch === epoch) return;
   try {
     await setAudioModeAsync({
       allowsRecording: false,
       interruptionMode: "mixWithOthers",
-      playsInSilentMode: false,
+      playsInSilentMode: true,
       shouldPlayInBackground: false,
     });
+    await setIsAudioActiveAsync(true);
+    configuredSessionEpoch = epoch;
   } catch {
-    audioModeConfigured = false;
+    configuredSessionEpoch = -1;
   }
 }
 
@@ -135,6 +143,14 @@ export function playCompanionVoice(
       if (isAudioSessionBusy()) return;
       const player = getOrCreateVoicePlayer(clip.uri);
       if (!player) return;
+      if (activeVoicePlayer && activeVoicePlayer !== player) {
+        try {
+          activeVoicePlayer.pause();
+        } catch {
+          // Ignore pause errors on previously evicted/stopped voice players.
+        }
+      }
+      activeVoicePlayer = player;
       player.volume = VOICE_VOLUME;
       try {
         await player.seekTo(0);
@@ -160,7 +176,8 @@ export function clearCompanionVoiceCache(): void {
     }
   }
   cachedPlayers.clear();
-  audioModeConfigured = false;
+  activeVoicePlayer = null;
+  configuredSessionEpoch = -1;
   lastVoicePlayedAt = 0;
   delete lastPlayedIdByCharacter.akeno;
   delete lastPlayedIdByCharacter.rias;

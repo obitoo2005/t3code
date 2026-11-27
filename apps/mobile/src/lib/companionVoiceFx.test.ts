@@ -7,21 +7,25 @@ interface MockPlayer {
   volume: number;
   seekTo: ReturnType<typeof vi.fn>;
   play: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
   remove: ReturnType<typeof vi.fn>;
 }
 
 const mockState = vi.hoisted(() => ({
   platformOs: "android" as "android" | "ios" | "web",
   audioBusy: false,
+  audioSessionEpoch: 0,
   voices: [] as SyncedCompanionVoice[],
   createdPlayers: [] as MockPlayer[],
   setAudioModeAsync: vi.fn(async () => {}),
+  setIsAudioActiveAsync: vi.fn(async () => {}),
   createAudioPlayer: vi.fn((source: { readonly uri: string }) => {
     const player: MockPlayer = {
       uri: source.uri,
       volume: 1,
       seekTo: vi.fn(async () => {}),
       play: vi.fn(),
+      pause: vi.fn(),
       remove: vi.fn(),
     };
     mockState.createdPlayers.push(player);
@@ -40,10 +44,12 @@ vi.mock("react-native", () => ({
 vi.mock("expo-audio", () => ({
   createAudioPlayer: mockState.createAudioPlayer,
   setAudioModeAsync: mockState.setAudioModeAsync,
+  setIsAudioActiveAsync: mockState.setIsAudioActiveAsync,
 }));
 
 vi.mock("./audioSession", () => ({
   isAudioSessionBusy: () => mockState.audioBusy,
+  getAudioSessionEpoch: () => mockState.audioSessionEpoch,
 }));
 
 vi.mock("./akenoPosePack", () => ({
@@ -133,10 +139,12 @@ describe("playCompanionVoice", () => {
     setCompanionVoiceFxEnabled(true);
     mockState.platformOs = "android";
     mockState.audioBusy = false;
+    mockState.audioSessionEpoch = 0;
     mockState.voices = [];
     mockState.createdPlayers = [];
     mockState.createAudioPlayer.mockClear();
     mockState.setAudioModeAsync.mockClear();
+    mockState.setIsAudioActiveAsync.mockClear();
   });
 
   afterEach(() => {
@@ -160,11 +168,12 @@ describe("playCompanionVoice", () => {
     expect(mockState.setAudioModeAsync).toHaveBeenCalledWith({
       allowsRecording: false,
       interruptionMode: "mixWithOthers",
-      playsInSilentMode: false,
+      playsInSilentMode: true,
       shouldPlayInBackground: false,
     });
+    expect(mockState.setIsAudioActiveAsync).toHaveBeenCalledWith(true);
     expect(mockState.createdPlayers).toHaveLength(1);
-    expect(mockState.createdPlayers[0]?.volume).toBe(0.85);
+    expect(mockState.createdPlayers[0]?.volume).toBe(1.0);
     expect(mockState.createdPlayers[0]?.seekTo).toHaveBeenCalledWith(0);
     expect(mockState.createdPlayers[0]?.play).toHaveBeenCalledTimes(1);
 
@@ -172,6 +181,31 @@ describe("playCompanionVoice", () => {
     mockState.audioBusy = true;
     vi.advanceTimersByTime(1000);
     expect(playCompanionVoice("akeno", "tap")).toBeNull();
+  });
+
+  it("re-enables native audio mode and active flag after an audio session epoch bump (e.g. voice recording)", async () => {
+    mockState.voices = [makeVoice({ id: "r1", character: "rias", role: "tap" })];
+
+    expect(playCompanionVoice("rias", "tap")?.id).toBe("r1");
+    await flushMicrotasks();
+    expect(mockState.setAudioModeAsync).toHaveBeenCalledTimes(1);
+    expect(mockState.setIsAudioActiveAsync).toHaveBeenCalledTimes(1);
+
+    // Same epoch should not redundantly re-configure audio mode.
+    vi.advanceTimersByTime(1000);
+    expect(playCompanionVoice("rias", "tap")?.id).toBe("r1");
+    await flushMicrotasks();
+    expect(mockState.setAudioModeAsync).toHaveBeenCalledTimes(1);
+    expect(mockState.setIsAudioActiveAsync).toHaveBeenCalledTimes(1);
+
+    // Simulate voice recording teardown bumping the shared audio session epoch.
+    mockState.audioSessionEpoch += 1;
+    vi.advanceTimersByTime(1000);
+    expect(playCompanionVoice("rias", "tap")?.id).toBe("r1");
+    await flushMicrotasks();
+    expect(mockState.setAudioModeAsync).toHaveBeenCalledTimes(2);
+    expect(mockState.setIsAudioActiveAsync).toHaveBeenCalledTimes(2);
+    expect(mockState.setIsAudioActiveAsync).toHaveBeenLastCalledWith(true);
   });
 
   it("enforces cooldowns without consuming cooldown when a character has no synced clips", () => {
