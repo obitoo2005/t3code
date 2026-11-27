@@ -192,7 +192,11 @@ import { openShareCard } from "../../components/ShareCardModal";
 import { deriveQuickPromptTitle } from "../../lib/riasEnhancements";
 import { playUiSound } from "../../lib/uiSoundFx";
 import { useSavedQuickPrompts, useStarredMessages } from "../../state/use-rias-enhancements";
-import { emitCompanionWhisper } from "./activeThreadComposerBridge";
+import {
+  emitCompanionWhisper,
+  insertTextIntoActiveComposer,
+} from "./activeThreadComposerBridge";
+import { formatSwipeQuoteText, SwipeToQuoteWrapper } from "./SwipeToQuoteWrapper";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
@@ -2112,6 +2116,7 @@ function renderFeedEntry(
     readonly starredMessageIds: ReadonlySet<string>;
     readonly onToggleStarMessage: (messageId: string) => void;
     readonly onSaveQuickPrompt: (text: string) => void;
+    readonly onSwipeQuoteMessage: (text: string) => void;
   },
 ) {
   const entry = info.item;
@@ -2490,11 +2495,16 @@ function renderFeedEntry(
           presentation.text.trim().length > 0 ||
           visibleAttachments.length + pendingBubbleAttachments.length > 0);
       return (
-        <Animated.View
-          // A prompt sits close to its own response; the answer's margin separates turns.
-          className={cn("items-end", props.userMessageGrouping.groupedWithNext ? "mb-1" : "mb-2")}
-          {...(enterAnimated ? { entering: FadeInDown.duration(220) } : {})}
+        <SwipeToQuoteWrapper
+          direction="left"
+          enabled={presentation.text.trim().length > 0}
+          onQuote={() => props.onSwipeQuoteMessage(presentation.text)}
         >
+          <Animated.View
+            // A prompt sits close to its own response; the answer's margin separates turns.
+            className={cn("items-end", props.userMessageGrouping.groupedWithNext ? "mb-1" : "mb-2")}
+            {...(enterAnimated ? { entering: FadeInDown.duration(220) } : {})}
+          >
           {presentation.attribution === "t3code" ? (
             <Text className="mb-1 pr-1 font-t3-medium text-2xs text-foreground-muted opacity-60">
               {m(msg("Sent by T3 Code"))}
@@ -2765,7 +2775,8 @@ function renderFeedEntry(
               ) : null}
             </View>
           ) : null}
-        </Animated.View>
+          </Animated.View>
+        </SwipeToQuoteWrapper>
       );
     }
 
@@ -2775,15 +2786,20 @@ function renderFeedEntry(
 
     const enterAnimated = isFreshTimestamp(message.createdAt);
     return (
-      <Animated.View
-        className={cn(
-          showAssistantMeta && !(message.runId && props.failedRunIds.has(message.runId))
-            ? "mb-5 px-1"
-            : "mb-1 px-1",
-          hasWideBlock && "w-full",
-        )}
-        {...(enterAnimated ? { entering: FadeIn.duration(220) } : {})}
+      <SwipeToQuoteWrapper
+        direction="both"
+        enabled={renderedText.trim().length > 0}
+        onQuote={() => props.onSwipeQuoteMessage(renderedText)}
       >
+        <Animated.View
+          className={cn(
+            showAssistantMeta && !(message.runId && props.failedRunIds.has(message.runId))
+              ? "mb-5 px-1"
+              : "mb-1 px-1",
+            hasWideBlock && "w-full",
+          )}
+          {...(enterAnimated ? { entering: FadeIn.duration(220) } : {})}
+        >
         {renderedText.trim().length > 0 ? (
           <MarkdownImageAvailableWidthContext value={props.markdownContentWidth}>
             <AssistantMarkdownContent
@@ -2869,7 +2885,8 @@ function renderFeedEntry(
             </Text>
           </View>
         ) : null}
-      </Animated.View>
+        </Animated.View>
+      </SwipeToQuoteWrapper>
     );
   }
 
@@ -3906,6 +3923,14 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     playUiSound("done");
     emitCompanionWhisper("Saved to Quick Prompts ✦");
   };
+  const handleSwipeQuoteMessage = (rawText: string) => {
+    const clean = replaceComposerContextReferences(rawText, (ref) => ref.label);
+    const quoted = formatSwipeQuoteText(clean);
+    if (!quoted) return;
+    if (!insertTextIntoActiveComposer(quoted)) return;
+    playUiSound("shuffle");
+    emitCompanionWhisper("Quoted! Reply away~ ✨");
+  };
   const [promptJumperVisible, setPromptJumperVisible] = useState(false);
   const promptJumperHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const promptJumperCursorRef = useRef<number | null>(null);
@@ -4509,6 +4534,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             starredMessageIds: starredSet,
             onToggleStarMessage: toggleStar,
             onSaveQuickPrompt: handleSaveQuickPrompt,
+            onSwipeQuoteMessage: handleSwipeQuoteMessage,
           })}
           {props.worktreeSetup && info.index === setupAnchorIndex ? (
             <WorktreeSetupCard

@@ -17,12 +17,20 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { isLateNightHour } from "../../components/AkenoMascot";
+import { isLateNightHour, RIAS_MOOD_SOURCES } from "../../components/AkenoMascot";
 import { AppText as Text } from "../../components/ui/AppText";
-import { type SyncedAkenoPose, useAkenoPosePack } from "../../lib/akenoPosePack";
+import {
+  type SyncedAkenoPose,
+  type SyncedRiasSprite,
+  useAkenoPosePack,
+} from "../../lib/akenoPosePack";
 import { useAppActive, useReduceMotionEnabled } from "../../lib/appState";
+import { playCompanionVoice } from "../../lib/companionVoiceFx";
 import { playUiSound } from "../../lib/uiSoundFx";
 import { subscribeCompanionWhisper } from "./activeThreadComposerBridge";
+
+export type ComposerPetCharacter = "akeno" | "rias";
+export type ComposerPetSlot = "solo" | "left" | "right";
 
 export type ComposerAkenoCorePose =
   | "idle"
@@ -43,10 +51,25 @@ const AKENO_CORE_SOURCES: Readonly<Record<ComposerAkenoCorePose, ImageSource>> =
   picked: require("../../../assets/akeno-pet-picked.webp"),
 };
 
+const RIAS_CORE_SOURCES: Readonly<Record<ComposerAkenoCorePose, ImageSource>> = {
+  idle: RIAS_MOOD_SOURCES.cute,
+  walk: RIAS_MOOD_SOURCES.happy,
+  working: RIAS_MOOD_SOURCES.cute,
+  happy: RIAS_MOOD_SOURCES.happy,
+  sleepy: RIAS_MOOD_SOURCES.sleepy,
+  picked: RIAS_MOOD_SOURCES.surprised,
+};
+
 const CORE_POSE_WHISPERS: Readonly<Partial<Record<ComposerAkenoCorePose, string>>> = {
   idle: "Ara ara~ ♥",
   happy: "Hehe~ ✨",
   sleepy: "So cozy~ 💤",
+};
+
+const RIAS_CORE_POSE_WHISPERS: Readonly<Partial<Record<ComposerAkenoCorePose, string>>> = {
+  idle: "Crimson Queen here ✦",
+  happy: "Good work~ ♥",
+  sleepy: "Rest well, my servant~ 💤",
 };
 
 interface AkenoPoseCatalog {
@@ -90,6 +113,73 @@ function buildAkenoPoseCatalog(syncedPoses: readonly SyncedAkenoPose[]): AkenoPo
     if (entry.roles.includes("settle")) settlePoses.push(entry.id);
     if (entry.roles.includes("celebration")) celebrationPoses.push(entry.id);
     if (entry.roles.includes("sleepy")) sleepyPoses.push(entry.id);
+  }
+
+  const showcasePoses: string[] = ["idle"];
+  const happyInsertIndex = Math.min(14, syncedShowcase.length);
+  for (let i = 0; i < syncedShowcase.length; i += 1) {
+    if (i === happyInsertIndex) {
+      showcasePoses.push("happy");
+    }
+    showcasePoses.push(syncedShowcase[i]!);
+  }
+  if (!showcasePoses.includes("happy")) {
+    showcasePoses.push("happy");
+  }
+  showcasePoses.push("sleepy");
+
+  return {
+    sourceByPose,
+    showcasePoses,
+    settlePoses,
+    celebrationPoses,
+    sleepyPoses,
+    sleepyPoseSet: new Set(sleepyPoses),
+    standingPoseSet,
+    perchedStaticPoseSet,
+    whisperByPose,
+  };
+}
+
+function buildRiasPoseCatalog(syncedSprites: readonly SyncedRiasSprite[]): AkenoPoseCatalog {
+  const sourceByPose: Record<string, ImageSource> = { ...RIAS_CORE_SOURCES };
+  const whisperByPose: Record<string, string> = {};
+  for (const [key, value] of Object.entries(RIAS_CORE_POSE_WHISPERS)) {
+    if (value) whisperByPose[key] = value;
+  }
+
+  const syncedShowcase: string[] = [];
+  const settlePoses: string[] = ["idle"];
+  const celebrationPoses: string[] = ["happy"];
+  const sleepyPoses: string[] = ["sleepy"];
+  const standingPoseSet = new Set<string>();
+  const perchedStaticPoseSet = new Set<string>();
+
+  for (const entry of syncedSprites) {
+    if (entry.id in RIAS_CORE_SOURCES) continue;
+    sourceByPose[entry.id] = entry.source;
+    if (entry.caption) {
+      whisperByPose[entry.id] = entry.caption;
+    }
+    if (entry.style === "uniform") {
+      standingPoseSet.add(entry.id);
+    } else {
+      perchedStaticPoseSet.add(entry.id);
+    }
+    syncedShowcase.push(entry.id);
+    if (entry.moods.includes("happy") || entry.moods.includes("done")) {
+      celebrationPoses.push(entry.id);
+    }
+    if (entry.moods.includes("sleepy")) {
+      sleepyPoses.push(entry.id);
+    }
+    if (
+      entry.moods.includes("cute") ||
+      entry.moods.includes("working") ||
+      entry.moods.includes("happy")
+    ) {
+      settlePoses.push(entry.id);
+    }
   }
 
   const showcasePoses: string[] = ["idle"];
@@ -177,11 +267,26 @@ const TAP_WHISPERS: readonly string[] = [
   "Pure OLED magic ♥",
 ];
 
+const RIAS_TAP_WHISPERS: readonly string[] = [
+  "Good work~ ♥",
+  "Crimson Queen here ✦",
+  "Double-tap to roam ♥",
+  "Hold & drag me~ ✦",
+  "Peerage power, pure OLED ♥",
+];
+
 const PICK_UP_WHISPERS: readonly string[] = [
   "Kyaa~! Put me down! ✨",
   "H-hey, careful~! 💜",
   "Where are we going? ♥",
   "Whoa, high up~! ✨",
+];
+
+const RIAS_PICK_UP_WHISPERS: readonly string[] = [
+  "Kyaa~! Put me down! ♥",
+  "H-hey! Careful with a Gremory~ ✦",
+  "Where are you taking me? ♥",
+  "Whoa, don't drop me~! ♥",
 ];
 
 const DROP_WHISPERS: readonly string[] = [
@@ -191,19 +296,34 @@ const DROP_WHISPERS: readonly string[] = [
   "Safe landing~ ♥",
 ];
 
+const RIAS_DROP_WHISPERS: readonly string[] = [
+  "Hmph, cozy spot~ ♥",
+  "Nice view from up here ✦",
+  "Right here is fine~ ♥",
+  "Safe landing, my servant~ ♥",
+];
+
 const DONE_WHISPERS: readonly string[] = [
   "All done~ ♥",
   "Shipped! ✨",
   "Nice work~ 💜",
 ];
 
+const RIAS_DONE_WHISPERS: readonly string[] = [
+  "Nicely shipped, my servant~ ♥",
+  "Good work~ ♥",
+  "Crimson victory! ✦",
+];
+
 /**
- * Interactive 165Hz roaming Akeno pet perched on the top rim of the chat composer.
+ * Interactive 165Hz roaming companion pet (Akeno or Rias) perched on the top rim of the chat composer.
  * - Bundled core poses (idle, walk, working, happy, sleepy, picked) work 100% offline.
- * - Extra chibi poses sync dynamically from the configured `.env` or Settings pose pack
- *   into permanent local device storage so new poses arrive without rebuilding the APK.
+ * - Extra chibi poses, Rias sprites, and anime voice clips sync dynamically from the configured
+ *   `.env` or Settings pose pack into permanent local device storage.
  */
 export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
+  readonly character?: ComposerPetCharacter;
+  readonly slot?: ComposerPetSlot;
   readonly stageWidth: number;
   readonly activeThreadBusy: boolean;
   readonly isTyping: boolean;
@@ -211,24 +331,45 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   readonly onPressOpenLimits?: () => void;
 }) {
   const gt = useGT();
+  const character: ComposerPetCharacter = props.character ?? "akeno";
+  const slot: ComposerPetSlot = props.slot ?? "solo";
+  const isRias = character === "rias";
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
   const posePack = useAkenoPosePack();
-  const catalog = useMemo(() => buildAkenoPoseCatalog(posePack.poses), [posePack.poses]);
+  const catalog = useMemo(
+    () =>
+      isRias
+        ? buildRiasPoseCatalog(posePack.riasSprites)
+        : buildAkenoPoseCatalog(posePack.poses),
+    [isRias, posePack.poses, posePack.riasSprites],
+  );
   const size = props.size ?? 74;
 
   const maxX = Math.max(EDGE_MARGIN, props.stageWidth - size - EDGE_MARGIN);
-  const canRoam = maxX > EDGE_MARGIN + 32;
+  const stageMidX = (EDGE_MARGIN + maxX) / 2;
+  const roamMinX =
+    slot === "right"
+      ? Math.max(EDGE_MARGIN, Math.min(maxX - 24, Math.round(stageMidX + 6)))
+      : EDGE_MARGIN;
+  const roamMaxX =
+    slot === "left"
+      ? Math.min(maxX, Math.max(EDGE_MARGIN + 24, Math.round(stageMidX - Math.round(size * 0.55))))
+      : maxX;
+  const roamMidX = (roamMinX + roamMaxX) / 2;
+  const initialX = slot === "left" ? Math.min(roamMaxX, EDGE_MARGIN + 6) : maxX;
+  const initialFacing: 1 | -1 = slot === "left" ? -1 : 1;
+  const canRoam = slot === "solo" ? roamMaxX > roamMinX + 32 : roamMaxX > roamMinX + 20;
 
   const [pose, setPose] = useState<ComposerAkenoPose>(() =>
     props.activeThreadBusy ? "working" : isLateNightHour() ? "sleepy" : "idle",
   );
   // facing: 1 = facing left (native sprite orientation), -1 = mirrored facing right
-  const [facing, setFacing] = useState<1 | -1>(1);
+  const [facing, setFacing] = useState<1 | -1>(initialFacing);
   const [whisper, setWhisper] = useState<string | null>(null);
-  const [whisperOnLeft, setWhisperOnLeft] = useState(true);
+  const [whisperOnLeft, setWhisperOnLeft] = useState(slot !== "left");
 
-  const posXRef = useRef<number>(maxX);
+  const posXRef = useRef<number>(initialX);
   const initializedRef = useRef(false);
   const walkingRef = useRef(false);
   const draggingRef = useRef(false);
@@ -248,11 +389,11 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   const afkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const posX = useSharedValue(maxX);
+  const posX = useSharedValue(initialX);
   const maxXShared = useSharedValue(maxX);
   const reducedMotionShared = useSharedValue(reducedMotion);
   const isPickedUpShared = useSharedValue(0);
-  const dragStartX = useSharedValue(maxX);
+  const dragStartX = useSharedValue(initialX);
   const dragLiftY = useSharedValue(0);
   const dragOffsetY = useSharedValue(0);
   const dragSwingDeg = useSharedValue(0);
@@ -260,8 +401,8 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   const squashScaleX = useSharedValue(1);
   const squashScaleY = useSharedValue(1);
   const breathScaleY = useSharedValue(1);
-  const lastDragFacingShared = useSharedValue<1 | -1>(1);
-  const lastOnRightShared = useSharedValue(true);
+  const lastDragFacingShared = useSharedValue<1 | -1>(initialFacing);
+  const lastOnRightShared = useSharedValue(slot !== "left");
 
   const jumpY = useSharedValue(0);
   const walkBobY = useSharedValue(0);
@@ -317,14 +458,13 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clamps roaming position to measured composer stage width
   useEffect(() => {
     if (props.stageWidth <= 0) return;
-    const midX = (EDGE_MARGIN + maxX) / 2;
     if (!initializedRef.current) {
       initializedRef.current = true;
-      posXRef.current = maxX;
-      posX.set(maxX);
-      setFacing(1);
-      lastDragFacingShared.set(1);
-      const onRight = maxX > midX;
+      posXRef.current = initialX;
+      posX.set(initialX);
+      setFacing(initialFacing);
+      lastDragFacingShared.set(initialFacing);
+      const onRight = initialX > stageMidX;
       lastOnRightShared.set(onRight);
       setWhisperOnLeft(onRight);
       return;
@@ -335,16 +475,25 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
       posXRef.current = clamped;
       posX.set(clamped);
     }
-    const onRight = clamped > midX;
+    const onRight = clamped > stageMidX;
     lastOnRightShared.set(onRight);
     setWhisperOnLeft(onRight);
-  }, [lastDragFacingShared, lastOnRightShared, maxX, posX, props.stageWidth]);
+  }, [
+    initialFacing,
+    initialX,
+    lastDragFacingShared,
+    lastOnRightShared,
+    maxX,
+    posX,
+    props.stageWidth,
+    stageMidX,
+  ]);
 
-  // Trigger a smooth stroll from current X to target X across the composer bar.
+  // Trigger a smooth stroll from current X to target X across the pet's roaming lane.
   const startWalkTo = useCallback(
     (targetX: number) => {
       if (reducedMotion || !appActive || props.activeThreadBusy || !canRoam || draggingRef.current) return;
-      const clampedTarget = Math.min(maxX, Math.max(EDGE_MARGIN, targetX));
+      const clampedTarget = Math.min(roamMaxX, Math.max(roamMinX, targetX));
       const distance = Math.abs(clampedTarget - posXRef.current);
       if (distance < 18) return;
 
@@ -384,12 +533,12 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
         walkingRef.current = false;
         cancelAnimation(walkBobY);
         walkBobY.set(withTiming(0, { duration: 110, reduceMotion: ReduceMotion.System }));
-        const settledOnLeft = clampedTarget < (EDGE_MARGIN + maxX) / 2;
-        const settledFacing: 1 | -1 = settledOnLeft ? -1 : 1;
+        const onRight = clampedTarget > stageMidX;
+        const settledFacing: 1 | -1 = onRight ? 1 : -1;
         setFacing(settledFacing);
         lastDragFacingShared.set(settledFacing);
-        lastOnRightShared.set(!settledOnLeft);
-        setWhisperOnLeft(!settledOnLeft);
+        lastOnRightShared.set(onRight);
+        setWhisperOnLeft(onRight);
         setPose(pickRandomPose(catalog.settlePoses, "walk"));
         jumpY.set(
           withSequence(
@@ -406,16 +555,18 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
       jumpY,
       lastDragFacingShared,
       lastOnRightShared,
-      maxX,
       posX,
       props.activeThreadBusy,
       reducedMotion,
+      roamMaxX,
+      roamMinX,
+      stageMidX,
       walkBobY,
     ],
   );
 
   // React to chat busy / turn completion transitions.
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- switches Akeno into working laptop pose while chat runs and happy celebration when done
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- switches companion into working pose while chat runs and happy celebration when done
   useEffect(() => {
     const wasBusy = prevBusyRef.current;
     prevBusyRef.current = props.activeThreadBusy;
@@ -442,9 +593,11 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     if (wasBusy && !props.activeThreadBusy) {
       const donePose = pickRandomPose(catalog.celebrationPoses, "working");
       stopWalking(donePose);
-      const msg = DONE_WHISPERS[whisperIndexRef.current % DONE_WHISPERS.length]!;
+      const voiceClip = playCompanionVoice(character, "done");
+      const doneWhispers = isRias ? RIAS_DONE_WHISPERS : DONE_WHISPERS;
+      const msg = doneWhispers[whisperIndexRef.current % doneWhispers.length]!;
       whisperIndexRef.current += 1;
-      showWhisper(msg, 2800);
+      showWhisper(voiceClip?.label ?? msg, 2800);
       if (!reducedMotion) {
         jumpY.set(
           withSequence(
@@ -468,6 +621,8 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   }, [
     catalog.celebrationPoses,
     catalog.settlePoses,
+    character,
+    isRias,
     jumpY,
     popScale,
     props.activeThreadBusy,
@@ -545,7 +700,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     reducedMotion,
   ]);
 
-  // Autonomous roaming scheduler while resting (occasionally strolls right <-> left or center on her own!).
+  // Autonomous roaming scheduler while resting (occasionally strolls within her lane on her own!).
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- schedules occasional autonomous right <-> left strolls when resting
   useEffect(() => {
     clearTimer(roamTimerRef);
@@ -566,10 +721,10 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     roamTimerRef.current = setTimeout(() => {
       roamTimerRef.current = null;
       if (draggingRef.current) return;
-      const midX = (EDGE_MARGIN + maxX) / 2;
-      const onRight = posXRef.current > midX;
-      const goCenter = Math.random() < 0.25 && Math.abs(posXRef.current - midX) > 48;
-      const targetX = goCenter ? midX : onRight ? EDGE_MARGIN : maxX;
+      const onRight = posXRef.current > roamMidX;
+      const goCenter =
+        Math.random() < 0.25 && Math.abs(posXRef.current - roamMidX) > (slot === "solo" ? 48 : 28);
+      const targetX = goCenter ? roamMidX : onRight ? roamMinX : roamMaxX;
       startWalkTo(targetX);
     }, delayMs);
 
@@ -578,15 +733,18 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     appActive,
     canRoam,
     effectivePose,
-    maxX,
     props.activeThreadBusy,
     props.isTyping,
     reducedMotion,
+    roamMaxX,
+    roamMidX,
+    roamMinX,
+    slot,
     startWalkTo,
   ]);
 
   // Gentle AFK sleepy transition after 90s of total inactivity.
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- settles Akeno into cozy sleepy pose after extended inactivity
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- settles companion into cozy sleepy pose after extended inactivity
   useEffect(() => {
     clearTimer(afkTimerRef);
     if (
@@ -662,8 +820,10 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   }, [appActive, breathScaleY, isCurrentStaticPose, reducedMotion]);
 
   // Celebrate daily prompt milestones & quick-save toasts emitted from the composer or feed!
+  // In dual-pet ("both") mode, skip subscribing on the left slot so external whispers don't pop duplicate bubbles.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to celebratory companion whispers and plays happy bounce reaction
   useEffect(() => {
+    if (slot === "left") return;
     return subscribeCompanionWhisper((message) => {
       showWhisper(message, 3400);
       if (draggingRef.current) return;
@@ -690,7 +850,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
         );
       }
     });
-  }, [jumpY, popScale, props.activeThreadBusy, reducedMotion, showWhisper, stopWalking]);
+  }, [jumpY, popScale, props.activeThreadBusy, reducedMotion, showWhisper, slot, stopWalking]);
 
   // Clean up all timers on unmount.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears roaming and reaction timers on unmount
@@ -713,14 +873,18 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     lastTapAtRef.current = now;
 
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    playUiSound("shuffle");
 
     if (isDoubleTap && !props.activeThreadBusy && canRoam) {
-      const midX = (EDGE_MARGIN + maxX) / 2;
-      const targetX = posXRef.current > midX ? EDGE_MARGIN : maxX;
-      showWhisper(gt("Coming over~ ✨"), 1800);
+      playUiSound("shuffle");
+      const targetX = posXRef.current > roamMidX ? roamMinX : roamMaxX;
+      showWhisper(isRias ? gt("On my way~ ♥") : gt("Coming over~ ✨"), 1800);
       startWalkTo(targetX);
       return;
+    }
+
+    const voiceClip = playCompanionVoice(character, "tap");
+    if (!voiceClip) {
+      playUiSound("shuffle");
     }
 
     if (!reducedMotion) {
@@ -746,7 +910,10 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     }
 
     if (props.activeThreadBusy) {
-      showWhisper(gt("Working hard~ 💜"), 2000);
+      showWhisper(
+        voiceClip?.label ?? (isRias ? gt("Focusing hard~ ♥") : gt("Working hard~ 💜")),
+        2000,
+      );
       return;
     }
 
@@ -761,9 +928,10 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     }
     stopWalking(nextPose);
 
-    const fallbackWhisper = TAP_WHISPERS[whisperIndexRef.current % TAP_WHISPERS.length]!;
+    const tapWhispers = isRias ? RIAS_TAP_WHISPERS : TAP_WHISPERS;
+    const fallbackWhisper = tapWhispers[whisperIndexRef.current % tapWhispers.length]!;
     whisperIndexRef.current += 1;
-    showWhisper(catalog.whisperByPose[nextPose] ?? fallbackWhisper, 2400);
+    showWhisper(voiceClip?.label ?? catalog.whisperByPose[nextPose] ?? fallbackWhisper, 2400);
   });
 
   const handlePickUpStart = useEffectEvent((currentX: number) => {
@@ -782,15 +950,19 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     walkBobY.set(0);
     setPose("picked");
 
-    const onRight = currentX > (EDGE_MARGIN + maxX) / 2;
+    const onRight = currentX > stageMidX;
     setWhisperOnLeft(onRight);
 
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    playUiSound("shuffle");
+    const voiceClip = playCompanionVoice(character, "pickup");
+    if (!voiceClip) {
+      playUiSound("shuffle");
+    }
 
-    const nextWhisper = PICK_UP_WHISPERS[pickupWhisperIndexRef.current % PICK_UP_WHISPERS.length]!;
+    const pickupWhispers = isRias ? RIAS_PICK_UP_WHISPERS : PICK_UP_WHISPERS;
+    const nextWhisper = pickupWhispers[pickupWhisperIndexRef.current % pickupWhispers.length]!;
     pickupWhisperIndexRef.current += 1;
-    showWhisper(nextWhisper, 3200);
+    showWhisper(voiceClip?.label ?? nextWhisper, 3200);
   });
 
   const handleDragFacingChange = useEffectEvent((nextFacing: 1 | -1) => {
@@ -809,7 +981,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     posXRef.current = clampedFinalX;
     manualHoldUntilRef.current = Date.now() + MANUAL_PLACE_HOLD_MS;
 
-    const settledOnLeft = clampedFinalX < (EDGE_MARGIN + maxX) / 2;
+    const settledOnLeft = clampedFinalX < stageMidX;
     const settledFacing: 1 | -1 = settledOnLeft ? -1 : 1;
     setFacing(settledFacing);
     lastDragFacingShared.set(settledFacing);
@@ -824,12 +996,13 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
 
     if (props.activeThreadBusy) {
       setPose("working");
-      showWhisper(gt("Back to work~ 💜"), 1800);
+      showWhisper(isRias ? gt("Back to work~ ♥") : gt("Back to work~ 💜"), 1800);
       return;
     }
 
     setPose("happy");
-    const nextDropWhisper = DROP_WHISPERS[dropWhisperIndexRef.current % DROP_WHISPERS.length]!;
+    const dropWhispers = isRias ? RIAS_DROP_WHISPERS : DROP_WHISPERS;
+    const nextDropWhisper = dropWhispers[dropWhisperIndexRef.current % dropWhispers.length]!;
     dropWhisperIndexRef.current += 1;
     showWhisper(nextDropWhisper, 2100);
 
@@ -1047,9 +1220,26 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
                 paddingHorizontal: 9,
                 paddingVertical: 4,
                 borderRadius: 999,
-                backgroundColor: "rgba(24, 16, 34, 0.92)",
+                backgroundColor: isRias
+                  ? "rgba(32, 12, 20, 0.92)"
+                  : "rgba(24, 16, 34, 0.92)",
                 borderWidth: 1,
-                borderColor: "rgba(192, 132, 252, 0.38)",
+                borderColor: isRias
+                  ? "rgba(251, 113, 133, 0.52)"
+                  : "rgba(192, 132, 252, 0.38)",
+                ...(isRias
+                  ? {
+                      boxShadow: [
+                        {
+                          offsetX: 0,
+                          offsetY: 2,
+                          blurRadius: 12,
+                          spreadDistance: 1,
+                          color: "rgba(225, 29, 72, 0.25)",
+                        },
+                      ],
+                    }
+                  : {}),
               }}
             >
               <Text
@@ -1058,7 +1248,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
                 style={{
                   fontSize: 10.5,
                   lineHeight: 13,
-                  color: "#F3E8FF",
+                  color: isRias ? "#FFE4E6" : "#F3E8FF",
                   fontWeight: "600",
                 }}
               >
@@ -1077,9 +1267,13 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
               width: 38,
               height: 8,
               borderRadius: 999,
-              backgroundColor: "rgba(18, 10, 28, 0.85)",
+              backgroundColor: isRias
+                ? "rgba(28, 10, 18, 0.85)"
+                : "rgba(18, 10, 28, 0.85)",
               borderWidth: 1,
-              borderColor: "rgba(192, 132, 252, 0.22)",
+              borderColor: isRias
+                ? "rgba(251, 113, 133, 0.28)"
+                : "rgba(192, 132, 252, 0.22)",
             },
             shadowStyle,
           ]}
@@ -1088,9 +1282,15 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
           <View
             accessible
             accessibilityRole="button"
-            accessibilityLabel={gt(
-              "Akeno chat bar pet. Tap to interact, double-tap to walk across, press and hold to pick up and drag.",
-            )}
+            accessibilityLabel={
+              isRias
+                ? gt(
+                    "Rias chat bar pet. Tap to interact, double-tap to walk across, press and hold to pick up and drag.",
+                  )
+                : gt(
+                    "Akeno chat bar pet. Tap to interact, double-tap to walk across, press and hold to pick up and drag.",
+                  )
+            }
             style={{
               width: size,
               height: size,
@@ -1115,7 +1315,10 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
                 }}
               >
                 <Image
-                  source={catalog.sourceByPose[effectivePose] ?? AKENO_CORE_SOURCES.idle}
+                  source={
+                    catalog.sourceByPose[effectivePose] ??
+                    (isRias ? RIAS_CORE_SOURCES.idle : AKENO_CORE_SOURCES.idle)
+                  }
                   autoplay={shouldAnimateWebp}
                   transition={110}
                   accessibilityIgnoresInvertColors

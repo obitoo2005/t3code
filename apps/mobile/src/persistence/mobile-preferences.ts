@@ -159,8 +159,9 @@ export interface Preferences {
   readonly codeWordBreak?: boolean;
   readonly mathRenderingEnabled?: boolean;
   readonly soundFxEnabled?: boolean;
+  readonly voiceFxEnabled?: boolean;
   readonly mascotPreference?: "rias" | "akeno" | "random";
-  readonly composerPet?: "akeno" | "rei" | "off";
+  readonly composerPet?: "akeno" | "rias" | "both" | "rei" | "off";
   readonly shakeToShuffleEnabled?: boolean;
   readonly savedQuickPrompts?: ReadonlyArray<SavedQuickPrompt>;
   readonly starredMessagesByThread?: Readonly<Record<string, ReadonlyArray<string>>>;
@@ -267,8 +268,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     codeWordBreak?: boolean;
     mathRenderingEnabled?: boolean;
     soundFxEnabled?: boolean;
+    voiceFxEnabled?: boolean;
     mascotPreference?: "rias" | "akeno" | "random";
-    composerPet?: "akeno" | "rei" | "off";
+    composerPet?: "akeno" | "rias" | "both" | "rei" | "off";
     shakeToShuffleEnabled?: boolean;
     savedQuickPrompts?: ReadonlyArray<SavedQuickPrompt>;
     starredMessagesByThread?: Readonly<Record<string, ReadonlyArray<string>>>;
@@ -380,6 +382,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (typeof parsed.soundFxEnabled === "boolean") {
     preferences.soundFxEnabled = parsed.soundFxEnabled;
   }
+  if (typeof parsed.voiceFxEnabled === "boolean") {
+    preferences.voiceFxEnabled = parsed.voiceFxEnabled;
+  }
   if (
     parsed.mascotPreference === "rias" ||
     parsed.mascotPreference === "akeno" ||
@@ -389,6 +394,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (
     parsed.composerPet === "akeno" ||
+    parsed.composerPet === "rias" ||
+    parsed.composerPet === "both" ||
     parsed.composerPet === "rei" ||
     parsed.composerPet === "off"
   ) {

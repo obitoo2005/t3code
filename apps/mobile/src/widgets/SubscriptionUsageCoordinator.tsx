@@ -1,11 +1,13 @@
 import { useAtomValue } from "@effect/atom-react";
-import { Atom } from "effect/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useLocale, useMessages } from "gt-react-native";
 import * as Linking from "expo-linking";
 import { useEffect, useEffectEvent } from "react";
 import { Platform } from "react-native";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { environmentCatalog } from "../connection/catalog";
+import { resolveCurrentDailyStats } from "../lib/riasEnhancements";
+import { mobilePreferencesAtom } from "../state/preferences";
 import { environmentPresentations } from "../state/presentation";
 import { republishAgentActivityWidget } from "./publishAgentActivityWidget";
 import { publishSubscriptionUsage } from "./publishSubscriptionUsage";
@@ -45,6 +47,13 @@ export function SubscriptionUsageCoordinator() {
     isReady: appearanceReady,
   } = useAppearancePreferences();
   const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
+  const preferencesResult = useAtomValue(mobilePreferencesAtom);
+  const dailyStats = AsyncResult.isSuccess(preferencesResult)
+    ? resolveCurrentDailyStats(preferencesResult.value.dailyActivityStats)
+    : undefined;
+  const streakDays = dailyStats?.streakDays;
+  const turnsToday = dailyStats?.turnsToday;
+  const totalTurns = dailyStats?.totalTurns;
   const resolve = useMessages();
   const locale = useLocale();
   const snapshot = useAtomValue(snapshotAtom(locale, resolve));
@@ -52,11 +61,16 @@ export function SubscriptionUsageCoordinator() {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes subscription usage and theme to the native home screen widget
   useEffect(() => {
     if (!catalog.isReady || !appearanceReady) return;
+    const riasStats =
+      streakDays !== undefined && turnsToday !== undefined && totalTurns !== undefined
+        ? { streakDays, turnsToday, totalTurns }
+        : undefined;
     void Promise.resolve()
       .then(() =>
         publishSubscriptionUsage({
           ...snapshot,
           theme: createWidgetTheme(themeMode, themeVariablesByAppearance),
+          ...(riasStats ? { riasStats } : {}),
         }),
       )
       .catch((error: unknown) => {
@@ -70,6 +84,9 @@ export function SubscriptionUsageCoordinator() {
     themeVariablesByAppearance,
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Android stores resolved colors; System appearance changes must republish them.
     androidAppearance,
+    streakDays,
+    turnsToday,
+    totalTurns,
   ]);
   const republishActivity = useEffectEvent(() => {
     republishAgentActivityWidget(resolve).catch((error: unknown) => {

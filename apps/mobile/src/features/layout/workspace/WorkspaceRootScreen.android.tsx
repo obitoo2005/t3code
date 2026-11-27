@@ -32,6 +32,7 @@ import { SettingsListScreen } from "../../settings/SettingsRouteScreen";
 import { workspaceUsesColumns, type WorkspaceTab } from "./workspace-tabs-state";
 import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
 import { useHardwareBack } from "../../../lib/backHandler";
+import { DynamicAgentIsland } from "./DynamicAgentIsland";
 
 type CompactPaneTab = WorkspaceTab | "settings";
 const COMPACT_PANE_TABS: readonly CompactPaneTab[] = [...NAVIGATION_TAB_ORDER, "settings"];
@@ -163,6 +164,7 @@ function WorkspaceRoot() {
         ) : (
           <AndroidWorkspaceNavigation onNewThread={startNewTask} />
         )}
+        <DynamicAgentIsland />
       </View>
     </WorkspaceTabsContext>
   );

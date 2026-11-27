@@ -3,8 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildAkenoPackRequest,
   buildAkenoPoseCacheFileName,
+  buildCompanionVoiceCacheFileName,
   buildRiasSpriteCacheFileName,
   buildRiasVipCacheFileName,
+  inferRiasVipMediaType,
   normalizeAkenoPackUrl,
   parseAkenoPosePackManifest,
   pickSeededItem,
@@ -216,5 +218,55 @@ describe("akenoPosePack", () => {
     const c = pickSeededItem(["x", "y", "z"], "run-42", 1);
     expect(a).toBe(b);
     expect(c).not.toBe(a);
+  });
+
+  it("parses companion voices and infers VIP video mediaType", () => {
+    const manifest = parseAkenoPosePackManifest({
+      version: 2,
+      poses: [],
+      riasVip: [
+        {
+          id: "clip01",
+          file: "rias/vip/clip01.mp4",
+          layout: "portrait",
+          title: "Clip 01",
+          rev: "vid123",
+        },
+      ],
+      voices: [
+        {
+          id: "ara-ufufu",
+          character: "akeno",
+          file: "voices/akeno/akeno-ara-ufufu.mp3",
+          role: "tap",
+          label: "Ara ara~ ufufu~",
+          rev: "aud111",
+        },
+        {
+          id: "bad-path",
+          character: "rias",
+          file: "../../secret.mp3",
+          role: "done",
+        },
+      ],
+    });
+
+    expect(manifest).not.toBeNull();
+    expect(manifest!.riasVip[0]?.mediaType).toBe("video");
+    expect(inferRiasVipMediaType("rias/vip/clip01.mp4")).toBe("video");
+    expect(inferRiasVipMediaType("rias/vip/pic.webp")).toBe("image");
+    expect(manifest!.voices).toEqual([
+      {
+        id: "ara-ufufu",
+        character: "akeno",
+        file: "voices/akeno/akeno-ara-ufufu.mp3",
+        role: "tap",
+        label: "Ara ara~ ufufu~",
+        rev: "aud111",
+      },
+    ]);
+    expect(buildCompanionVoiceCacheFileName(manifest!.voices[0]!)).toBe(
+      "voice-akeno-ara-ufufu-aud111.mp3",
+    );
   });
 });

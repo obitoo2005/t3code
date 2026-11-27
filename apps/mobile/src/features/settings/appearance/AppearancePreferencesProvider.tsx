@@ -2,6 +2,7 @@ import { createContext, startTransition, use, useEffect, useMemo, type ReactNode
 import { AppState, Appearance, Platform, useColorScheme } from "react-native";
 
 import { setUiSoundFxEnabled } from "../../../lib/uiSoundFx";
+import { setCompanionVoiceFxEnabled } from "../../../lib/voiceFxState";
 
 import { manufacturer } from "expo-device";
 import {
@@ -92,10 +93,12 @@ interface AppearancePreferencesContextValue {
   readonly setMathRenderingEnabled: (value: boolean) => void;
   readonly soundFxEnabled: boolean;
   readonly setSoundFxEnabled: (value: boolean) => void;
+  readonly voiceFxEnabled: boolean;
+  readonly setVoiceFxEnabled: (value: boolean) => void;
   readonly mascotPreference: "rias" | "akeno" | "random";
   readonly setMascotPreference: (value: "rias" | "akeno" | "random") => void;
-  readonly composerPet: "akeno" | "rei" | "off";
-  readonly setComposerPet: (value: "akeno" | "rei" | "off") => void;
+  readonly composerPet: "akeno" | "rias" | "both" | "rei" | "off";
+  readonly setComposerPet: (value: "akeno" | "rias" | "both" | "rei" | "off") => void;
   readonly shakeToShuffleEnabled: boolean;
   readonly setShakeToShuffleEnabled: (value: boolean) => void;
 }
@@ -342,20 +345,27 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     setUiSoundFxEnabled(value);
     updatePreferences({ soundFxEnabled: value });
   };
+  const voiceFxEnabled = storedPreferences?.voiceFxEnabled !== false;
+  const setVoiceFxEnabled = (value: boolean) => {
+    setCompanionVoiceFxEnabled(value);
+    updatePreferences({ voiceFxEnabled: value });
+  };
   const mascotPreference: "rias" | "akeno" | "random" =
     storedPreferences?.mascotPreference ?? "random";
   const setMascotPreference = (value: "rias" | "akeno" | "random") =>
     updatePreferences({ mascotPreference: value });
-  const composerPet: "akeno" | "rei" | "off" = storedPreferences?.composerPet ?? "akeno";
-  const setComposerPet = (value: "akeno" | "rei" | "off") =>
+  const composerPet: "akeno" | "rias" | "both" | "rei" | "off" =
+    storedPreferences?.composerPet ?? "akeno";
+  const setComposerPet = (value: "akeno" | "rias" | "both" | "rei" | "off") =>
     updatePreferences({ composerPet: value });
   const shakeToShuffleEnabled = storedPreferences?.shakeToShuffleEnabled !== false;
   const setShakeToShuffleEnabled = (value: boolean) =>
     updatePreferences({ shakeToShuffleEnabled: value });
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- syncs persisted soundFxEnabled flag to imperative audio helper
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- syncs persisted soundFxEnabled and voiceFxEnabled flags to imperative audio helpers
   useEffect(() => {
     setUiSoundFxEnabled(soundFxEnabled);
-  }, [soundFxEnabled]);
+    setCompanionVoiceFxEnabled(voiceFxEnabled);
+  }, [soundFxEnabled, voiceFxEnabled]);
 
   const value = useMemo(
     (): AppearancePreferencesContextValue => ({
@@ -389,6 +399,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setMathRenderingEnabled,
       soundFxEnabled,
       setSoundFxEnabled,
+      voiceFxEnabled,
+      setVoiceFxEnabled,
       mascotPreference,
       setMascotPreference,
       composerPet,
@@ -424,6 +436,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setMathRenderingEnabled,
       soundFxEnabled,
       setSoundFxEnabled,
+      voiceFxEnabled,
+      setVoiceFxEnabled,
       mascotPreference,
       setMascotPreference,
       composerPet,

@@ -1029,8 +1029,45 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     onPressOpenLimits={usageLimitsOffered ? openUsageLimits : undefined}
                   />
                 </View>
+              ) : composerPet === "rias" ? (
+                <ComposerAkenoPet
+                  key="rias-solo"
+                  character="rias"
+                  slot="solo"
+                  stageWidth={composerStageWidth}
+                  activeThreadBusy={props.activeThreadBusy}
+                  isTyping={isFocused || draftMessage.trim().length > 0}
+                  size={84}
+                  onPressOpenLimits={usageLimitsOffered ? openUsageLimits : undefined}
+                />
+              ) : composerPet === "both" ? (
+                <>
+                  <ComposerAkenoPet
+                    key="rias-left"
+                    character="rias"
+                    slot="left"
+                    stageWidth={composerStageWidth}
+                    activeThreadBusy={props.activeThreadBusy}
+                    isTyping={isFocused || draftMessage.trim().length > 0}
+                    size={80}
+                    onPressOpenLimits={usageLimitsOffered ? openUsageLimits : undefined}
+                  />
+                  <ComposerAkenoPet
+                    key="akeno-right"
+                    character="akeno"
+                    slot="right"
+                    stageWidth={composerStageWidth}
+                    activeThreadBusy={props.activeThreadBusy}
+                    isTyping={isFocused || draftMessage.trim().length > 0}
+                    size={82}
+                    onPressOpenLimits={usageLimitsOffered ? openUsageLimits : undefined}
+                  />
+                </>
               ) : (
                 <ComposerAkenoPet
+                  key="akeno-solo"
+                  character="akeno"
+                  slot="solo"
                   stageWidth={composerStageWidth}
                   activeThreadBusy={props.activeThreadBusy}
                   isTyping={isFocused || draftMessage.trim().length > 0}

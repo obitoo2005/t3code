@@ -39,42 +39,57 @@ export function SubscriptionUsage(props: SubscriptionUsageProps, environment: Wi
         : "light";
   const palette = props.theme?.[appearance];
   const material = getMaterialColors({ scheme: appearance });
+  const isDark = appearance === "dark";
   const colors = palette
     ? {
-        surface: palette.background,
+        surface: isDark ? "#0B0710" : palette.background,
         onSurface: palette.foreground,
         muted: palette.secondary,
-        track: palette.track,
+        track: isDark ? "#1B1124" : palette.track,
         error: palette.danger,
       }
     : {
-        surface: material.surface,
+        surface: isDark ? "#0B0710" : material.surface,
         onSurface: material.onSurface,
         muted: material.onSurfaceVariant,
-        track: material.surfaceVariant,
+        track: isDark ? "#1B1124" : material.surfaceVariant,
         error: material.error,
       };
+  const brandAccent = isDark ? "#FB7185" : "#E11D48";
+  const pillBackground = isDark ? "#2A1222" : "#FFE4E6";
+  const pillTextColor = isDark ? "#C084FC" : "#9F1239";
   // English until the app publishes its first snapshot in the UI language.
   const text = props.text ?? {
-    refresh: "Open T3 to refresh",
+    refresh: "Open Rias Code to refresh",
     left: "left",
     asOf: "As of {time}",
-    tapToConnect: "Tap to connect in T3",
+    tapToConnect: "Tap to connect in Rias Code",
     moreInApp: {} as Record<string, string>,
   };
   const providers = props.providers ?? [
     // oxlint-disable-next-line t3code/no-untranslated-copy -- widget fallback until the app publishes translated text
-    { name: "Codex", detail: "Open T3 to connect", windows: [], expiresAt: 0, totalWindows: 0 },
+    { name: "Codex", detail: "Open Rias Code to connect", windows: [], expiresAt: 0, totalWindows: 0 },
     // oxlint-disable-next-line t3code/no-untranslated-copy -- widget fallback until the app publishes translated text
-    { name: "Claude", detail: "Open T3 to connect", windows: [], expiresAt: 0, totalWindows: 0 },
+    { name: "Claude", detail: "Open Rias Code to connect", windows: [], expiresAt: 0, totalWindows: 0 },
   ];
 
   const pad = 14;
   const labelWidth = 92;
+  const headerHeight = 20;
+  const headerGap = 6;
   const footer = 16;
   const widgetWidth = environment.width ?? 320;
   const contentWidth = widgetWidth - pad * 2;
-  const contentHeight = (environment.height ?? 200) - pad * 2 - footer;
+  const contentHeight = Math.max(
+    20,
+    (environment.height ?? 200) - pad * 2 - headerHeight - headerGap - footer,
+  );
+  const brandWidth = Math.min(92, Math.floor(contentWidth * 0.45));
+  const badgeWidth = Math.max(0, contentWidth - brandWidth);
+  const activeRiasStats =
+    props.riasStats && (props.riasStats.streakDays > 0 || props.riasStats.turnsToday > 0)
+      ? props.riasStats
+      : null;
   const kindOrder: Record<string, number> = { session: 0, weekly: 1 };
 
   type Line =
@@ -333,12 +348,45 @@ export function SubscriptionUsage(props: SubscriptionUsageProps, environment: Wi
       onClick={() => {}}
     >
       <Column modifiers={[fillMaxSize(), paddingAll(pad)]}>
+        <Row verticalAlignment="center" modifiers={[fillMaxWidth(), height(headerHeight)]}>
+          <Text
+            color={brandAccent}
+            maxLines={1}
+            style={{ fontSize: 11, fontWeight: "bold" }}
+            modifiers={[width(brandWidth)]}
+          >
+            {/* oxlint-disable-next-line t3code/no-untranslated-copy -- brand mark in Android home screen widget */}
+            {"✦ Rias Code"}
+          </Text>
+          <Box contentAlignment="centerEnd" modifiers={[width(badgeWidth), height(headerHeight)]}>
+            {activeRiasStats ? (
+              <Box
+                modifiers={[background(pillBackground), cornerRadius(8), padding(6, 2, 6, 2)]}
+              >
+                <Text
+                  color={pillTextColor}
+                  maxLines={1}
+                  style={{ fontSize: 10, fontWeight: "bold" }}
+                >
+                  {/* oxlint-disable-next-line t3code/no-untranslated-copy -- compact streak badge in Android home screen widget */}
+                  {`🔥 ${activeRiasStats.streakDays}d · ${activeRiasStats.turnsToday} today`}
+                </Text>
+              </Box>
+            ) : (
+              <Text color={colors.muted} maxLines={1} style={{ fontSize: 10 }}>
+                {/* oxlint-disable-next-line t3code/no-untranslated-copy -- idle status label in Android home screen widget */}
+                {"✦ OLED Ready"}
+              </Text>
+            )}
+          </Box>
+        </Row>
+        <Spacer modifiers={[height(headerGap)]} />
         <Column modifiers={[fillMaxWidth(), height(contentHeight)]}>
           {shown.map(row)}
           {hidden > 0 ? (
             <Text color={colors.muted} maxLines={1} style={{ fontSize: 10 }}>
               {/* oxlint-disable-next-line t3code/no-untranslated-copy -- widget fallback until the app publishes translated text */}
-              {text.moreInApp[String(hidden)] ?? `${hidden} more in T3`}
+              {text.moreInApp[String(hidden)] ?? `${hidden} more in Rias Code`}
             </Text>
           ) : null}
         </Column>

@@ -47,10 +47,17 @@ export interface WidgetLimitAccount {
   durationMs?: number;
 }
 
+export interface WidgetRiasStats {
+  streakDays: number;
+  turnsToday: number;
+  totalTurns: number;
+}
+
 export interface SubscriptionUsageSnapshot {
   theme?: WidgetTheme;
   url?: string;
   text?: SubscriptionUsageText;
+  riasStats?: WidgetRiasStats;
   checkedAt: number;
   providers: Array<{
     name: string;
@@ -218,20 +225,31 @@ function subscriptionUsageProps(
 ): SubscriptionUsageSnapshot {
   const pools = collectLimitPools(accounts, now);
   const checked = accounts
-    .filter((account) => account.driver === "codex" || account.driver === "claudeAgent")
+    .filter(
+      (account) =>
+        account.driver === "codex" ||
+        account.driver === "claudeAgent" ||
+        account.driver === "antigravity",
+    )
     .map((account) => Date.parse(account.limits.checkedAt));
   return {
     checkedAt: checked.length > 0 && checked.every(Number.isFinite) ? Math.min(...checked) : 0,
-    providers: (["codex", "claudeAgent"] as const)
+    providers: (["codex", "claudeAgent", "antigravity"] as const)
       .filter(
         (driver) =>
           configuredDrivers.has(driver) || accounts.some((account) => account.driver === driver),
       )
       .map((driver) => {
         const pool = pools.find((candidate) => candidate.driver === driver);
-        const name = driver === "codex" ? "Codex" : "Claude";
-        const kind = driver === "codex" ? "codex" : "claude";
-        const colors = { light: providerColors("light")[kind], dark: providerColors("dark")[kind] };
+        const name =
+          driver === "codex" ? "Codex" : driver === "claudeAgent" ? "Claude" : "Antigravity";
+        const colors =
+          driver === "antigravity"
+            ? { light: "#7C3AED", dark: "#C084FC" }
+            : (() => {
+                const kind = driver === "codex" ? "codex" : "claude";
+                return { light: providerColors("light")[kind], dark: providerColors("dark")[kind] };
+              })();
         if (!pool)
           return {
             name,
@@ -302,6 +320,7 @@ export function buildSubscriptionUsageSnapshot(
   url: string,
   maxWindowsPerProvider = 6,
   resolve: MessageResolver = m,
+  riasStats?: WidgetRiasStats,
 ): SubscriptionUsageSnapshot {
   const configuredDrivers = new Set(
     [...presentations.values()].flatMap((presentation) =>
@@ -326,6 +345,7 @@ export function buildSubscriptionUsageSnapshot(
   return {
     ...props,
     url,
+    ...(riasStats ? { riasStats } : {}),
     // The Android widget counts hidden rows across providers, a note row included.
     text: subscriptionUsageText(
       resolve,

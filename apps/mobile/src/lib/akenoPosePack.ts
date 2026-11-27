@@ -37,14 +37,28 @@ export interface RiasSpriteManifestEntry {
 }
 
 export type RiasVipLayout = "fullbody" | "portrait";
+export type RiasVipMediaType = "image" | "video";
 
 export interface RiasVipManifestEntry {
   readonly id: string;
   readonly file: string;
   readonly layout: RiasVipLayout;
+  readonly mediaType?: RiasVipMediaType;
   readonly title?: string;
   readonly width?: number;
   readonly height?: number;
+  readonly rev?: string;
+}
+
+export type CompanionVoiceCharacter = "akeno" | "rias";
+export type CompanionVoiceRole = "tap" | "done" | "pickup" | "greet";
+
+export interface CompanionVoiceManifestEntry {
+  readonly id: string;
+  readonly character: CompanionVoiceCharacter;
+  readonly file: string;
+  readonly role: CompanionVoiceRole;
+  readonly label?: string;
   readonly rev?: string;
 }
 
@@ -55,6 +69,7 @@ export interface AkenoPosePackManifest {
   readonly poses: readonly AkenoPackPoseManifestEntry[];
   readonly riasSprites: readonly RiasSpriteManifestEntry[];
   readonly riasVip: readonly RiasVipManifestEntry[];
+  readonly voices: readonly CompanionVoiceManifestEntry[];
 }
 
 export interface SyncedAkenoPose {
@@ -80,9 +95,18 @@ export interface SyncedRiasVipPortrait {
   readonly uri: string;
   readonly source: ImageSource;
   readonly layout: RiasVipLayout;
+  readonly mediaType: RiasVipMediaType;
   readonly title: string | undefined;
   readonly width: number | undefined;
   readonly height: number | undefined;
+}
+
+export interface SyncedCompanionVoice {
+  readonly id: string;
+  readonly character: CompanionVoiceCharacter;
+  readonly uri: string;
+  readonly role: CompanionVoiceRole;
+  readonly label: string | undefined;
 }
 
 export type AkenoPosePackSyncStatus =
@@ -99,6 +123,7 @@ export interface AkenoPosePackSnapshot {
   readonly poses: readonly SyncedAkenoPose[];
   readonly riasSprites: readonly SyncedRiasSprite[];
   readonly riasVip: readonly SyncedRiasVipPortrait[];
+  readonly voices: readonly SyncedCompanionVoice[];
   readonly downloadedCount: number;
   readonly totalCount: number;
   readonly lastSyncedAt: number | null;
@@ -117,6 +142,13 @@ const DOWNLOAD_CONCURRENCY = 6;
 const AUTO_SYNC_COOLDOWN_MS = 5 * 60_000;
 
 const VALID_ROLES = new Set<AkenoPoseRole>(["showcase", "settle", "celebration", "sleepy"]);
+const VALID_VOICE_ROLES = new Set<CompanionVoiceRole>(["tap", "done", "pickup", "greet"]);
+const VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v|mkv)(?:[?#].*)?$/i;
+
+export function inferRiasVipMediaType(file: string, explicit?: unknown): RiasVipMediaType {
+  if (explicit === "video" || explicit === "image") return explicit;
+  return VIDEO_EXT_RE.test(file) ? "video" : "image";
+}
 const VALID_RIAS_MOODS = new Set<RiasSpriteMood>([
   "working",
   "done",
@@ -301,6 +333,12 @@ export function parseAkenoPosePackManifest(raw: unknown): AkenoPosePackManifest 
       if (!id || !file || seenVipIds.has(id)) continue;
 
       const layout: RiasVipLayout = entry.layout === "fullbody" ? "fullbody" : "portrait";
+      const explicitMediaType =
+        entry.mediaType === "video" || entry.mediaType === "image"
+          ? entry.mediaType
+          : VIDEO_EXT_RE.test(file)
+            ? "video"
+            : undefined;
       const title =
         typeof entry.title === "string" && entry.title.trim().length > 0
           ? entry.title.trim()
@@ -320,9 +358,46 @@ export function parseAkenoPosePackManifest(raw: unknown): AkenoPosePackManifest 
         id,
         file,
         layout,
+        ...(explicitMediaType ? { mediaType: explicitMediaType } : {}),
         ...(title ? { title } : {}),
         ...(width ? { width } : {}),
         ...(height ? { height } : {}),
+        ...(rev ? { rev } : {}),
+      });
+    }
+  }
+
+  const seenVoiceIds = new Set<string>();
+  const voices: CompanionVoiceManifestEntry[] = [];
+  if (Array.isArray(candidate.voices)) {
+    for (const item of candidate.voices) {
+      if (!item || typeof item !== "object") continue;
+      const entry = item as Record<string, unknown>;
+      const id = parseSafeId(entry.id);
+      const file = parseSafeFile(entry.file);
+      const character: CompanionVoiceCharacter | null =
+        entry.character === "akeno" || entry.character === "rias" ? entry.character : null;
+      if (!id || !file || !character) continue;
+      const voiceKey = `${character}:${id}`;
+      if (seenVoiceIds.has(voiceKey)) continue;
+
+      const role: CompanionVoiceRole =
+        typeof entry.role === "string" && VALID_VOICE_ROLES.has(entry.role as CompanionVoiceRole)
+          ? (entry.role as CompanionVoiceRole)
+          : "tap";
+      const label =
+        typeof entry.label === "string" && entry.label.trim().length > 0
+          ? entry.label.trim()
+          : undefined;
+      const rev = parseSafeRev(entry.rev);
+
+      seenVoiceIds.add(voiceKey);
+      voices.push({
+        id,
+        character,
+        file,
+        role,
+        ...(label ? { label } : {}),
         ...(rev ? { rev } : {}),
       });
     }
@@ -335,6 +410,7 @@ export function parseAkenoPosePackManifest(raw: unknown): AkenoPosePackManifest 
     poses,
     riasSprites,
     riasVip,
+    voices,
   };
 }
 
@@ -433,6 +509,10 @@ export function buildRiasVipCacheFileName(entry: RiasVipManifestEntry): string {
   return buildPrefixedCacheFileName("rias-vip", entry);
 }
 
+export function buildCompanionVoiceCacheFileName(entry: CompanionVoiceManifestEntry): string {
+  return buildPrefixedCacheFileName(`voice-${entry.character}`, entry);
+}
+
 interface ExtraAkenoPackConfig {
   readonly url?: string | null;
   readonly token?: string | null;
@@ -502,6 +582,7 @@ let snapshot: AkenoPosePackSnapshot = {
   poses: [],
   riasSprites: [],
   riasVip: [],
+  voices: [],
   downloadedCount: 0,
   totalCount: 0,
   lastSyncedAt: null,
@@ -547,16 +628,17 @@ async function readCachedAssetsFromDisk(): Promise<{
   readonly poses: readonly SyncedAkenoPose[];
   readonly riasSprites: readonly SyncedRiasSprite[];
   readonly riasVip: readonly SyncedRiasVipPortrait[];
+  readonly voices: readonly SyncedCompanionVoice[];
 }> {
   try {
     const { File, posesDir, manifestFile } = await getPackDirectories();
     if (!manifestFile.exists) {
-      return { poses: [], riasSprites: [], riasVip: [] };
+      return { poses: [], riasSprites: [], riasVip: [], voices: [] };
     }
     const rawText = await manifestFile.text();
     const manifest = parseAkenoPosePackManifest(JSON.parse(rawText));
     if (!manifest) {
-      return { poses: [], riasSprites: [], riasVip: [] };
+      return { poses: [], riasSprites: [], riasVip: [], voices: [] };
     }
 
     const poses: SyncedAkenoPose[] = [];
@@ -596,15 +678,29 @@ async function readCachedAssetsFromDisk(): Promise<{
         uri: localFile.uri,
         source: { uri: localFile.uri },
         layout: entry.layout,
+        mediaType: inferRiasVipMediaType(entry.file, entry.mediaType),
         title: entry.title,
         width: entry.width,
         height: entry.height,
       });
     }
 
-    return { poses, riasSprites, riasVip };
+    const voices: SyncedCompanionVoice[] = [];
+    for (const entry of manifest.voices) {
+      const localFile = new File(posesDir, buildCompanionVoiceCacheFileName(entry));
+      if (!localFile.exists) continue;
+      voices.push({
+        id: entry.id,
+        character: entry.character,
+        uri: localFile.uri,
+        role: entry.role,
+        label: entry.label,
+      });
+    }
+
+    return { poses, riasSprites, riasVip, voices };
   } catch {
-    return { poses: [], riasSprites: [], riasVip: [] };
+    return { poses: [], riasSprites: [], riasVip: [], voices: [] };
   }
 }
 
@@ -615,11 +711,16 @@ export async function ensureAkenoPosePackLoaded(): Promise<void> {
       resolveActivePackConfig(),
       readCachedAssetsFromDisk(),
     ]);
-    const totalCached = cached.poses.length + cached.riasSprites.length + cached.riasVip.length;
+    const totalCached =
+      cached.poses.length +
+      cached.riasSprites.length +
+      cached.riasVip.length +
+      cached.voices.length;
     emitSnapshot({
       poses: cached.poses,
       riasSprites: cached.riasSprites,
       riasVip: cached.riasVip,
+      voices: cached.voices,
       downloadedCount: totalCached,
       totalCount: totalCached,
       configSource: config.source,
@@ -649,7 +750,10 @@ export async function syncAkenoPosePack(options?: {
     await ensureAkenoPosePackLoaded();
     const config = await resolveActivePackConfig();
     const existingTotal =
-      snapshot.poses.length + snapshot.riasSprites.length + snapshot.riasVip.length;
+      snapshot.poses.length +
+      snapshot.riasSprites.length +
+      snapshot.riasVip.length +
+      snapshot.voices.length;
 
     if (!config.url) {
       return emitSnapshot({
@@ -738,9 +842,18 @@ export async function syncAkenoPosePack(options?: {
           resolveAkenoPoseFileUrl(config.url, undefined, entry.file),
         );
       }
+      for (const entry of manifest.voices) {
+        registerItem(
+          buildCompanionVoiceCacheFileName(entry),
+          resolveAkenoPoseFileUrl(config.url, undefined, entry.file),
+        );
+      }
 
       const totalAssets =
-        manifest.poses.length + manifest.riasSprites.length + manifest.riasVip.length;
+        manifest.poses.length +
+        manifest.riasSprites.length +
+        manifest.riasVip.length +
+        manifest.voices.length;
 
       emitSnapshot({
         downloadedCount: completedCount,
@@ -827,18 +940,37 @@ export async function syncAkenoPosePack(options?: {
           uri: localFile.uri,
           source: { uri: localFile.uri },
           layout: entry.layout,
+          mediaType: inferRiasVipMediaType(entry.file, entry.mediaType),
           title: entry.title,
           width: entry.width,
           height: entry.height,
         });
       }
 
-      const readyTotal = readyPoses.length + readyRiasSprites.length + readyRiasVip.length;
+      const readyVoices: SyncedCompanionVoice[] = [];
+      for (const entry of manifest.voices) {
+        const localFile = new File(posesDir, buildCompanionVoiceCacheFileName(entry));
+        if (!localFile.exists) continue;
+        readyVoices.push({
+          id: entry.id,
+          character: entry.character,
+          uri: localFile.uri,
+          role: entry.role,
+          label: entry.label,
+        });
+      }
+
+      const readyTotal =
+        readyPoses.length +
+        readyRiasSprites.length +
+        readyRiasVip.length +
+        readyVoices.length;
       return emitSnapshot({
         status: failedDownloads > 0 && readyTotal === 0 ? "error" : "synced",
         poses: readyPoses,
         riasSprites: readyRiasSprites,
         riasVip: readyRiasVip,
+        voices: readyVoices,
         downloadedCount: readyTotal,
         totalCount: totalAssets,
         lastSyncedAt: Date.now(),

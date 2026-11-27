@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   buildSubscriptionUsageSnapshot,
   createWidgetRefresher,
+  subscriptionUsageTimeline,
   WIDGET_REFRESH_INTERVAL,
 } from "./subscriptionUsageSnapshot";
 
@@ -210,6 +211,82 @@ describe("subscription widget snapshots", () => {
     const snapshot = buildSubscriptionUsageSnapshot(input, deepLink);
     expect(snapshot.providers[0]?.detail).toBe("Subscription remaining");
     expect(snapshot.providers[0]?.windows[0]?.remaining).toBe(20);
+  });
+  it("supports Antigravity pools with violet OLED colors without exposing emails", () => {
+    const antigravity = (id: string, overrides: Partial<ServerProvider> = {}) =>
+      provider({
+        instanceId: ProviderInstanceId.make(id),
+        driver: ProviderDriverKind.make("antigravity"),
+        auth: { status: "authenticated", email: `${id}@example.com` },
+        ...overrides,
+      });
+    const snapshot = buildSubscriptionUsageSnapshot(
+      presentations([
+        antigravity("ag-1", {
+          displayName: "Neon",
+          usageLimits: {
+            checkedAt,
+            windows: [{ ...window, id: "flash", label: "Flash", usedPercent: 25 }],
+          },
+        }),
+        antigravity("ag-2", {
+          displayName: "ag-2@example.com",
+          usageLimits: {
+            checkedAt,
+            windows: [{ ...window, id: "flash", label: "Flash", usedPercent: 55 }],
+          },
+        }),
+      ]),
+      deepLink,
+    );
+    expect(snapshot.checkedAt).toBe(now);
+    expect(snapshot.providers).toHaveLength(1);
+    expect(snapshot.providers[0]).toMatchObject({
+      name: "Antigravity",
+      colors: { light: "#7C3AED", dark: "#C084FC" },
+      detail: "2 accounts · pooled",
+      windows: [{ label: "Flash", remaining: 60 }],
+    });
+    expect(JSON.stringify(snapshot)).not.toContain("example.com");
+  });
+  it("includes configured Antigravity provider even before limits arrive", () => {
+    const snapshot = buildSubscriptionUsageSnapshot(
+      presentations([
+        provider({
+          instanceId: ProviderInstanceId.make("antigravity"),
+          driver: ProviderDriverKind.make("antigravity"),
+          usageLimits: undefined,
+        }),
+      ]),
+      deepLink,
+    );
+    expect(snapshot.providers).toHaveLength(1);
+    expect(snapshot.providers[0]).toMatchObject({
+      name: "Antigravity",
+      colors: { light: "#7C3AED", dark: "#C084FC" },
+      detail: "No limits available",
+      windows: [],
+    });
+  });
+  it("omits riasStats when absent and preserves it across timeline entries when provided", () => {
+    const withoutStats = buildSubscriptionUsageSnapshot(presentations(), deepLink);
+    expect("riasStats" in withoutStats).toBe(false);
+
+    const riasStats = { streakDays: 5, turnsToday: 18, totalTurns: 142 };
+    const withStats = buildSubscriptionUsageSnapshot(
+      presentations(),
+      deepLink,
+      6,
+      undefined,
+      riasStats,
+    );
+    expect(withStats.riasStats).toStrictEqual(riasStats);
+
+    const timeline = subscriptionUsageTimeline(withStats, now);
+    expect(timeline.length).toBeGreaterThanOrEqual(2);
+    for (const entry of timeline) {
+      expect(entry.props.riasStats).toStrictEqual(riasStats);
+    }
   });
 });
 

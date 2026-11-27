@@ -36,18 +36,22 @@ function AkenoPosePackCard() {
 
   const isSyncing = pack.status === "syncing";
   const hasAnyAssets =
-    pack.poses.length > 0 || pack.riasSprites.length > 0 || pack.riasVip.length > 0;
+    pack.poses.length > 0 ||
+    pack.riasSprites.length > 0 ||
+    pack.riasVip.length > 0 ||
+    pack.voices.length > 0;
   const statusLine = isSyncing
     ? gt("Syncing pack ({downloaded}/{total})…", {
         downloaded: pack.downloadedCount,
         total: pack.totalCount || "…",
       })
     : hasAnyAssets
-      ? pack.riasSprites.length > 0 || pack.riasVip.length > 0
-        ? gt("{akeno} Akeno • {rias} Rias • {vip} VIP cached", {
+      ? pack.riasSprites.length > 0 || pack.riasVip.length > 0 || pack.voices.length > 0
+        ? gt("{akeno} Akeno • {rias} Rias • {vip} VIP • {voices} voices", {
             akeno: pack.poses.length,
             rias: pack.riasSprites.length,
             vip: pack.riasVip.length,
+            voices: pack.voices.length,
           })
         : gt("{count} synced poses cached • Offline ready", { count: pack.poses.length })
       : pack.configuredUrl
@@ -216,16 +220,22 @@ function MascotAppearanceSection() {
               }}
               options={[
                 { value: "akeno", label: gt("Akeno") },
-                { value: "rei", label: gt("Rei (Quota)") },
+                { value: "rias", label: gt("Rias") },
+                { value: "both", label: gt("Both") },
+                { value: "rei", label: gt("Rei") },
                 { value: "off", label: gt("Off") },
               ]}
             />
             <Text textRole="caption" className="px-0.5 text-foreground-muted">
               {composerPet === "akeno"
                 ? gt("Akeno sits on your chat bar, roams left & right, and reacts as you chat.")
-                : composerPet === "rei"
-                  ? gt("Rei sits on your chat bar showing your live 5-hour quota banner.")
-                  : gt("Hides the chat bar companion for a minimal composer.")}
+                : composerPet === "rias"
+                  ? gt("Rias perches on your chat bar, cycles sprites, and celebrates finished turns.")
+                  : composerPet === "both"
+                    ? gt("Rias and Akeno roam your chat bar together on opposite sides!")
+                    : composerPet === "rei"
+                      ? gt("Rei sits on your chat bar showing your live 5-hour quota banner.")
+                      : gt("Hides the chat bar companion for a minimal composer.")}
             </Text>
             <AkenoPosePackCard />
           </View>
@@ -241,6 +251,8 @@ function SoundFxAppearanceSection() {
     isReady,
     soundFxEnabled,
     setSoundFxEnabled,
+    voiceFxEnabled,
+    setVoiceFxEnabled,
     shakeToShuffleEnabled,
     setShakeToShuffleEnabled,
   } = useAppearancePreferences();
@@ -256,6 +268,18 @@ function SoundFxAppearanceSection() {
           if (next) playUiSound("shuffle", { force: true });
         }}
       />
+      {Platform.OS === "android" ? (
+        <SettingsSwitchRow
+          label={gt("Companion voice lines")}
+          subtitle={gt("Play synced Akeno & Rias anime voice clips on tap, pickup, and turn completion.")}
+          value={voiceFxEnabled}
+          disabled={!isReady}
+          onValueChange={(next) => {
+            setVoiceFxEnabled(next);
+            if (next) playUiSound("shuffle", { force: true });
+          }}
+        />
+      ) : null}
       {Platform.OS === "android" ? (
         <SettingsSwitchRow
           label={gt("Shake Home to shuffle avatars")}
