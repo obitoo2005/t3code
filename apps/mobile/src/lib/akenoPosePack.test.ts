@@ -3,8 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildAkenoPackRequest,
   buildAkenoPoseCacheFileName,
+  buildRiasSpriteCacheFileName,
+  buildRiasVipCacheFileName,
   normalizeAkenoPackUrl,
   parseAkenoPosePackManifest,
+  pickSeededItem,
   resolveAkenoPoseFileUrl,
 } from "./akenoPosePack";
 
@@ -147,5 +150,71 @@ describe("akenoPosePack", () => {
       "https://raw.githubusercontent.com/obitoo2005/rias-assets/main/manifest.json",
     );
     expect(unauthed.headers.Authorization).toBeUndefined();
+  });
+
+  it("parses manifest v2 riasSprites and riasVip entries and picks deterministically", () => {
+    const manifest = parseAkenoPosePackManifest({
+      version: 2,
+      baseUrl: "poses/",
+      poses: [],
+      riasSprites: [
+        {
+          id: "rias01",
+          file: "rias/sprites/rias-sprite-01.webp",
+          style: "bust",
+          moods: ["working", "cute", "invalid"],
+          caption: "Thinking~ ♥",
+          rev: "abc123",
+        },
+        {
+          id: "rias02",
+          file: "../escape.webp",
+          style: "uniform",
+          moods: ["happy"],
+        },
+      ],
+      riasVip: [
+        {
+          id: "vip03",
+          file: "rias/vip/rias-vip03.webp",
+          layout: "fullbody",
+          title: "Grand Hall — Crimson Queen",
+          width: 853,
+          height: 1280,
+          rev: "fff999",
+        },
+      ],
+    });
+
+    expect(manifest).not.toBeNull();
+    expect(manifest!.riasSprites).toEqual([
+      {
+        id: "rias01",
+        file: "rias/sprites/rias-sprite-01.webp",
+        style: "bust",
+        moods: ["working", "cute"],
+        caption: "Thinking~ ♥",
+        rev: "abc123",
+      },
+    ]);
+    expect(manifest!.riasVip).toEqual([
+      {
+        id: "vip03",
+        file: "rias/vip/rias-vip03.webp",
+        layout: "fullbody",
+        title: "Grand Hall — Crimson Queen",
+        width: 853,
+        height: 1280,
+        rev: "fff999",
+      },
+    ]);
+    expect(buildRiasSpriteCacheFileName(manifest!.riasSprites[0]!)).toBe("rias-rias01-abc123.webp");
+    expect(buildRiasVipCacheFileName(manifest!.riasVip[0]!)).toBe("rias-vip-vip03-fff999.webp");
+
+    const a = pickSeededItem(["x", "y", "z"], "run-42", 0);
+    const b = pickSeededItem(["x", "y", "z"], "run-42", 0);
+    const c = pickSeededItem(["x", "y", "z"], "run-42", 1);
+    expect(a).toBe(b);
+    expect(c).not.toBe(a);
   });
 });

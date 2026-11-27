@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -14,6 +14,11 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
+import {
+  pickSeededItem,
+  type RiasSpriteMood,
+  useAkenoPosePack,
+} from "../lib/akenoPosePack";
 import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
 import {
   COMPANION_MOOD_SOURCES,
@@ -31,6 +36,8 @@ const STATE_TO_MOOD: Readonly<Record<AkenoIconState, CompanionMood>> = {
   failed: "sad",
 };
 
+const WORKING_CYCLE_MS = 5500;
+
 const TAP_SPRING = {
   damping: 12,
   stiffness: 340,
@@ -40,10 +47,10 @@ const TAP_SPRING = {
 
 /**
  * 4-state animated expressive companion mascot (Rias / Akeno) for chat turn timing rows:
- * - `working`: cute sparkling winking sprite + gentle float
- * - `done`: happy cheering sprite with floating hearts & stars
- * - `stopped`: surprised flustered sprite with bobbing sweat drop & `!`
- * - `failed`: sad teary-eyed pouting sprite
+ * - `working`: live cycling thinking/grimoire/lightbulb/crimson-aura sprites + gentle float
+ * - `done`: deterministic celebratory sprite per turn (tap to cycle!)
+ * - `stopped`: surprised flustered sprite
+ * - `failed`: pout / crimson aura sprite
  * Follows Settings → Appearance → Companion mascot (`rias` / `akeno` / `random`).
  */
 export const AkenoWorkingIcon = memo(function AkenoWorkingIcon(props: {
@@ -57,13 +64,46 @@ export const AkenoWorkingIcon = memo(function AkenoWorkingIcon(props: {
   const size = props.size ?? 38;
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
+  const posePack = useAkenoPosePack({ autoSync: false });
   const { mascotPreference } = useAppearancePreferences();
   const [fallbackCharacter] = useState<CompanionCharacter>(() =>
     pickAlternatingCompanion(props.seed),
   );
+  const [workingCycleStep, setWorkingCycleStep] = useState(0);
+
   const character: CompanionCharacter =
     mascotPreference === "random" ? fallbackCharacter : mascotPreference;
-  const source = COMPANION_MOOD_SOURCES[character][STATE_TO_MOOD[state]];
+
+  const riasCandidates = useMemo(() => {
+    if (character !== "rias" || posePack.riasSprites.length === 0) return [];
+    const targetMoods: readonly RiasSpriteMood[] =
+      state === "working"
+        ? ["working", "cute"]
+        : state === "done"
+          ? ["done", "happy"]
+          : state === "stopped"
+            ? ["stopped", "surprised"]
+            : ["failed", "sad"];
+
+    const matched = posePack.riasSprites.filter((sprite) =>
+      targetMoods.some((mood) => sprite.moods.includes(mood)),
+    );
+    const pool = matched.length > 0 ? matched : posePack.riasSprites;
+    // Prefer crisp bust close-ups at 38dp icon size so face & hand gestures stay super legible!
+    const bustFirst = [
+      ...pool.filter((sprite) => sprite.style === "bust"),
+      ...pool.filter((sprite) => sprite.style !== "bust"),
+    ];
+    return bustFirst;
+  }, [character, posePack.riasSprites, state]);
+
+  const syncedRiasSprite = useMemo(() => {
+    if (riasCandidates.length === 0) return undefined;
+    const offset = (props.tapCount ?? 0) + (state === "working" ? workingCycleStep : 0);
+    return pickSeededItem(riasCandidates, props.seed, offset);
+  }, [props.seed, props.tapCount, riasCandidates, state, workingCycleStep]);
+
+  const source = syncedRiasSprite?.source ?? COMPANION_MOOD_SOURCES[character][STATE_TO_MOOD[state]];
 
   const shouldFloat = state === "working" && appActive && !reducedMotion;
   const shouldPlayWebp = appActive && !reducedMotion;
@@ -74,6 +114,28 @@ export const AkenoWorkingIcon = memo(function AkenoWorkingIcon(props: {
   const tapScale = useSharedValue(1);
   const tapTilt = useSharedValue(0);
   const prevStateRef = useRef<AkenoIconState>(state);
+
+  // Auto-cycle Rias's thinking/working expressions while an agent turn is actively running.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- animates live pose changes while Rias is thinking
+  useEffect(() => {
+    if (state !== "working" || !appActive || riasCandidates.length <= 1) return;
+    const timer = setInterval(() => {
+      setWorkingCycleStep((step) => step + 1);
+    }, WORKING_CYCLE_MS);
+    return () => clearInterval(timer);
+  }, [appActive, riasCandidates.length, state]);
+
+  // Subtle spring pop when Rias cycles to a fresh thinking expression.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- plays gentle reaction bounce on thinking pose swap
+  useEffect(() => {
+    if (workingCycleStep === 0 || reducedMotion) return;
+    tapScale.set(
+      withSequence(
+        withTiming(1.14, { duration: 85, easing: Easing.out(Easing.cubic) }),
+        withSpring(1, TAP_SPRING),
+      ),
+    );
+  }, [reducedMotion, tapScale, workingCycleStep]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts and stops continuous Reanimated working mascot loop
   useEffect(() => {
@@ -220,6 +282,7 @@ export const AkenoWorkingIcon = memo(function AkenoWorkingIcon(props: {
         <Image
           source={source}
           autoplay={shouldPlayWebp}
+          transition={120}
           accessibilityIgnoresInvertColors
           contentFit="contain"
           style={{ width: "100%", height: "100%" }}

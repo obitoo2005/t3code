@@ -15,11 +15,46 @@ export interface AkenoPackPoseManifestEntry {
   readonly rev?: string;
 }
 
+export type RiasSpriteStyle = "bust" | "uniform";
+export type RiasSpriteMood =
+  | "working"
+  | "done"
+  | "stopped"
+  | "failed"
+  | "cute"
+  | "happy"
+  | "surprised"
+  | "sad"
+  | "sleepy";
+
+export interface RiasSpriteManifestEntry {
+  readonly id: string;
+  readonly file: string;
+  readonly style: RiasSpriteStyle;
+  readonly moods: readonly RiasSpriteMood[];
+  readonly caption?: string;
+  readonly rev?: string;
+}
+
+export type RiasVipLayout = "fullbody" | "portrait";
+
+export interface RiasVipManifestEntry {
+  readonly id: string;
+  readonly file: string;
+  readonly layout: RiasVipLayout;
+  readonly title?: string;
+  readonly width?: number;
+  readonly height?: number;
+  readonly rev?: string;
+}
+
 export interface AkenoPosePackManifest {
   readonly version: number;
   readonly updatedAt?: string;
   readonly baseUrl?: string;
   readonly poses: readonly AkenoPackPoseManifestEntry[];
+  readonly riasSprites: readonly RiasSpriteManifestEntry[];
+  readonly riasVip: readonly RiasVipManifestEntry[];
 }
 
 export interface SyncedAkenoPose {
@@ -29,6 +64,25 @@ export interface SyncedAkenoPose {
   readonly stance: AkenoPoseStance;
   readonly whisper: string | undefined;
   readonly roles: readonly AkenoPoseRole[];
+}
+
+export interface SyncedRiasSprite {
+  readonly id: string;
+  readonly uri: string;
+  readonly source: ImageSource;
+  readonly style: RiasSpriteStyle;
+  readonly moods: readonly RiasSpriteMood[];
+  readonly caption: string | undefined;
+}
+
+export interface SyncedRiasVipPortrait {
+  readonly id: string;
+  readonly uri: string;
+  readonly source: ImageSource;
+  readonly layout: RiasVipLayout;
+  readonly title: string | undefined;
+  readonly width: number | undefined;
+  readonly height: number | undefined;
 }
 
 export type AkenoPosePackSyncStatus =
@@ -43,6 +97,8 @@ export type AkenoPosePackConfigSource = "custom" | "env" | "none";
 export interface AkenoPosePackSnapshot {
   readonly status: AkenoPosePackSyncStatus;
   readonly poses: readonly SyncedAkenoPose[];
+  readonly riasSprites: readonly SyncedRiasSprite[];
+  readonly riasVip: readonly SyncedRiasVipPortrait[];
   readonly downloadedCount: number;
   readonly totalCount: number;
   readonly lastSyncedAt: number | null;
@@ -61,6 +117,37 @@ const DOWNLOAD_CONCURRENCY = 6;
 const AUTO_SYNC_COOLDOWN_MS = 5 * 60_000;
 
 const VALID_ROLES = new Set<AkenoPoseRole>(["showcase", "settle", "celebration", "sleepy"]);
+const VALID_RIAS_MOODS = new Set<RiasSpriteMood>([
+  "working",
+  "done",
+  "stopped",
+  "failed",
+  "cute",
+  "happy",
+  "surprised",
+  "sad",
+  "sleepy",
+]);
+
+/**
+ * Deterministic seeded picker for companion sprites so each chat turn or card
+ * displays a consistent unique expression without flickering across re-renders.
+ */
+export function pickSeededItem<T>(
+  items: readonly T[],
+  seed: string | undefined,
+  offset = 0,
+): T | undefined {
+  if (items.length === 0) return undefined;
+  let hash = 0;
+  if (seed) {
+    for (let i = 0; i < seed.length; i += 1) {
+      hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+    }
+  }
+  const index = (Math.abs(hash) + Math.max(0, offset)) % items.length;
+  return items[index];
+}
 
 /**
  * Normalizes a user or .env pack URL into a base URL without trailing slash.
@@ -107,28 +194,44 @@ function isSafeRelativeFilePath(file: string): boolean {
   return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 }
 
-/** Validates and normalizes a remote or cached pose pack manifest. */
+function parseSafeId(raw: unknown): string {
+  const id = typeof raw === "string" ? raw.trim() : "";
+  return /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : "";
+}
+
+function parseSafeFile(raw: unknown): string {
+  const file = typeof raw === "string" ? raw.trim() : "";
+  if (!file) return "";
+  if (/^https?:\/\//i.test(file)) return file;
+  return isSafeRelativeFilePath(file) ? file : "";
+}
+
+function parseSafeRev(raw: unknown): string | undefined {
+  const rev = typeof raw === "string" ? raw.trim() : "";
+  return /^[A-Za-z0-9_-]{1,40}$/.test(rev) ? rev : undefined;
+}
+
+/** Validates and normalizes a remote or cached pose pack manifest (v1 & v2). */
 export function parseAkenoPosePackManifest(raw: unknown): AkenoPosePackManifest | null {
   if (!raw || typeof raw !== "object") return null;
   const candidate = raw as Record<string, unknown>;
-  const version = typeof candidate.version === "number" && Number.isFinite(candidate.version)
-    ? candidate.version
-    : 1;
+  const version =
+    typeof candidate.version === "number" && Number.isFinite(candidate.version)
+      ? candidate.version
+      : 1;
   const updatedAt = typeof candidate.updatedAt === "string" ? candidate.updatedAt : undefined;
   const baseUrl = typeof candidate.baseUrl === "string" ? candidate.baseUrl.trim() : undefined;
   if (!Array.isArray(candidate.poses)) return null;
 
-  const seenIds = new Set<string>();
+  const seenPoseIds = new Set<string>();
   const poses: AkenoPackPoseManifestEntry[] = [];
 
   for (const item of candidate.poses) {
     if (!item || typeof item !== "object") continue;
     const entry = item as Record<string, unknown>;
-    const id = typeof entry.id === "string" ? entry.id.trim() : "";
-    const file = typeof entry.file === "string" ? entry.file.trim() : "";
-    if (!id || !/^[A-Za-z0-9_-]{1,64}$/.test(id) || seenIds.has(id)) continue;
-    const isHttpUrl = /^https?:\/\//i.test(file);
-    if (!isHttpUrl && !isSafeRelativeFilePath(file)) continue;
+    const id = parseSafeId(entry.id);
+    const file = parseSafeFile(entry.file);
+    if (!id || !file || seenPoseIds.has(id)) continue;
 
     const stance: AkenoPoseStance = entry.stance === "standing" ? "standing" : "perched";
     const whisper =
@@ -140,12 +243,9 @@ export function parseAkenoPosePackManifest(raw: unknown): AkenoPosePackManifest 
       (role): role is AkenoPoseRole =>
         typeof role === "string" && VALID_ROLES.has(role as AkenoPoseRole),
     );
-    const rev =
-      typeof entry.rev === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(entry.rev.trim())
-        ? entry.rev.trim()
-        : undefined;
+    const rev = parseSafeRev(entry.rev);
 
-    seenIds.add(id);
+    seenPoseIds.add(id);
     poses.push({
       id,
       file,
@@ -156,15 +256,89 @@ export function parseAkenoPosePackManifest(raw: unknown): AkenoPosePackManifest 
     });
   }
 
+  const seenRiasIds = new Set<string>();
+  const riasSprites: RiasSpriteManifestEntry[] = [];
+  if (Array.isArray(candidate.riasSprites)) {
+    for (const item of candidate.riasSprites) {
+      if (!item || typeof item !== "object") continue;
+      const entry = item as Record<string, unknown>;
+      const id = parseSafeId(entry.id);
+      const file = parseSafeFile(entry.file);
+      if (!id || !file || seenRiasIds.has(id)) continue;
+
+      const style: RiasSpriteStyle = entry.style === "uniform" ? "uniform" : "bust";
+      const rawMoods = Array.isArray(entry.moods) ? entry.moods : ["cute"];
+      const moods = rawMoods.filter(
+        (mood): mood is RiasSpriteMood =>
+          typeof mood === "string" && VALID_RIAS_MOODS.has(mood as RiasSpriteMood),
+      );
+      const caption =
+        typeof entry.caption === "string" && entry.caption.trim().length > 0
+          ? entry.caption.trim()
+          : undefined;
+      const rev = parseSafeRev(entry.rev);
+
+      seenRiasIds.add(id);
+      riasSprites.push({
+        id,
+        file,
+        style,
+        moods: moods.length > 0 ? moods : ["cute"],
+        ...(caption ? { caption } : {}),
+        ...(rev ? { rev } : {}),
+      });
+    }
+  }
+
+  const seenVipIds = new Set<string>();
+  const riasVip: RiasVipManifestEntry[] = [];
+  if (Array.isArray(candidate.riasVip)) {
+    for (const item of candidate.riasVip) {
+      if (!item || typeof item !== "object") continue;
+      const entry = item as Record<string, unknown>;
+      const id = parseSafeId(entry.id);
+      const file = parseSafeFile(entry.file);
+      if (!id || !file || seenVipIds.has(id)) continue;
+
+      const layout: RiasVipLayout = entry.layout === "fullbody" ? "fullbody" : "portrait";
+      const title =
+        typeof entry.title === "string" && entry.title.trim().length > 0
+          ? entry.title.trim()
+          : undefined;
+      const width =
+        typeof entry.width === "number" && Number.isFinite(entry.width) && entry.width > 0
+          ? entry.width
+          : undefined;
+      const height =
+        typeof entry.height === "number" && Number.isFinite(entry.height) && entry.height > 0
+          ? entry.height
+          : undefined;
+      const rev = parseSafeRev(entry.rev);
+
+      seenVipIds.add(id);
+      riasVip.push({
+        id,
+        file,
+        layout,
+        ...(title ? { title } : {}),
+        ...(width ? { width } : {}),
+        ...(height ? { height } : {}),
+        ...(rev ? { rev } : {}),
+      });
+    }
+  }
+
   return {
     version,
     ...(updatedAt ? { updatedAt } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     poses,
+    riasSprites,
+    riasVip,
   };
 }
 
-/** Resolves the download URL for one pose entry from pack URL + optional manifest baseUrl. */
+/** Resolves the download URL for one asset entry from pack URL + optional manifest baseUrl. */
 export function resolveAkenoPoseFileUrl(
   packBaseUrl: string,
   manifestBaseUrl: string | undefined,
@@ -236,11 +410,27 @@ export function buildAkenoPackRequest(url: string, token: string | null): AkenoP
   return { url, headers };
 }
 
-/** Deterministic local cache filename that automatically busts when `rev` changes. */
-export function buildAkenoPoseCacheFileName(entry: AkenoPackPoseManifestEntry): string {
+function buildPrefixedCacheFileName(
+  prefix: string,
+  entry: { readonly id: string; readonly file: string; readonly rev?: string },
+): string {
   const extMatch = /\.([A-Za-z0-9]{2,6})(?:[?#].*)?$/.exec(entry.file);
   const ext = extMatch ? extMatch[1]!.toLowerCase() : "webp";
-  return entry.rev ? `${entry.id}-${entry.rev}.${ext}` : `${entry.id}.${ext}`;
+  const base = prefix ? `${prefix}-${entry.id}` : entry.id;
+  return entry.rev ? `${base}-${entry.rev}.${ext}` : `${base}.${ext}`;
+}
+
+/** Deterministic local cache filename for Akeno poses (keeps existing cache warm). */
+export function buildAkenoPoseCacheFileName(entry: AkenoPackPoseManifestEntry): string {
+  return buildPrefixedCacheFileName("", entry);
+}
+
+export function buildRiasSpriteCacheFileName(entry: RiasSpriteManifestEntry): string {
+  return buildPrefixedCacheFileName("rias", entry);
+}
+
+export function buildRiasVipCacheFileName(entry: RiasVipManifestEntry): string {
+  return buildPrefixedCacheFileName("rias-vip", entry);
 }
 
 interface ExtraAkenoPackConfig {
@@ -310,6 +500,8 @@ async function resolveActivePackConfig(): Promise<{
 let snapshot: AkenoPosePackSnapshot = {
   status: "idle",
   poses: [],
+  riasSprites: [],
+  riasVip: [],
   downloadedCount: 0,
   totalCount: 0,
   lastSyncedAt: null,
@@ -351,19 +543,27 @@ async function getPackDirectories() {
   return { Directory, File, rootDir, posesDir, manifestFile };
 }
 
-async function readCachedPosesFromDisk(): Promise<readonly SyncedAkenoPose[]> {
+async function readCachedAssetsFromDisk(): Promise<{
+  readonly poses: readonly SyncedAkenoPose[];
+  readonly riasSprites: readonly SyncedRiasSprite[];
+  readonly riasVip: readonly SyncedRiasVipPortrait[];
+}> {
   try {
     const { File, posesDir, manifestFile } = await getPackDirectories();
-    if (!manifestFile.exists) return [];
+    if (!manifestFile.exists) {
+      return { poses: [], riasSprites: [], riasVip: [] };
+    }
     const rawText = await manifestFile.text();
     const manifest = parseAkenoPosePackManifest(JSON.parse(rawText));
-    if (!manifest) return [];
+    if (!manifest) {
+      return { poses: [], riasSprites: [], riasVip: [] };
+    }
 
-    const ready: SyncedAkenoPose[] = [];
+    const poses: SyncedAkenoPose[] = [];
     for (const entry of manifest.poses) {
       const localFile = new File(posesDir, buildAkenoPoseCacheFileName(entry));
       if (!localFile.exists) continue;
-      ready.push({
+      poses.push({
         id: entry.id,
         uri: localFile.uri,
         source: { uri: localFile.uri },
@@ -372,40 +572,68 @@ async function readCachedPosesFromDisk(): Promise<readonly SyncedAkenoPose[]> {
         roles: entry.roles,
       });
     }
-    return ready;
+
+    const riasSprites: SyncedRiasSprite[] = [];
+    for (const entry of manifest.riasSprites) {
+      const localFile = new File(posesDir, buildRiasSpriteCacheFileName(entry));
+      if (!localFile.exists) continue;
+      riasSprites.push({
+        id: entry.id,
+        uri: localFile.uri,
+        source: { uri: localFile.uri },
+        style: entry.style,
+        moods: entry.moods,
+        caption: entry.caption,
+      });
+    }
+
+    const riasVip: SyncedRiasVipPortrait[] = [];
+    for (const entry of manifest.riasVip) {
+      const localFile = new File(posesDir, buildRiasVipCacheFileName(entry));
+      if (!localFile.exists) continue;
+      riasVip.push({
+        id: entry.id,
+        uri: localFile.uri,
+        source: { uri: localFile.uri },
+        layout: entry.layout,
+        title: entry.title,
+        width: entry.width,
+        height: entry.height,
+      });
+    }
+
+    return { poses, riasSprites, riasVip };
   } catch {
-    return [];
+    return { poses: [], riasSprites: [], riasVip: [] };
   }
 }
 
 export async function ensureAkenoPosePackLoaded(): Promise<void> {
   if (cacheLoadPromise) return cacheLoadPromise;
   cacheLoadPromise = (async () => {
-    const [config, cachedPoses] = await Promise.all([
+    const [config, cached] = await Promise.all([
       resolveActivePackConfig(),
-      readCachedPosesFromDisk(),
+      readCachedAssetsFromDisk(),
     ]);
+    const totalCached = cached.poses.length + cached.riasSprites.length + cached.riasVip.length;
     emitSnapshot({
-      poses: cachedPoses,
-      downloadedCount: cachedPoses.length,
-      totalCount: cachedPoses.length,
+      poses: cached.poses,
+      riasSprites: cached.riasSprites,
+      riasVip: cached.riasVip,
+      downloadedCount: totalCached,
+      totalCount: totalCached,
       configSource: config.source,
       configuredUrl: config.url,
       hasToken: Boolean(config.token),
-      status:
-        cachedPoses.length > 0
-          ? "synced"
-          : config.url
-            ? "idle"
-            : "unconfigured",
+      status: totalCached > 0 ? "synced" : config.url ? "idle" : "unconfigured",
     });
   })();
   return cacheLoadPromise;
 }
 
 /**
- * Syncs the Akeno pose pack from the configured .env or custom URL into permanent device storage.
- * Only downloads missing or updated pose files; already-cached poses stay 100% offline.
+ * Syncs Akeno poses, Rias sprites, and VIP Rias portraits from the configured .env or
+ * custom private pack URL into permanent device storage. Only downloads missing/updated files.
  */
 export async function syncAkenoPosePack(options?: {
   readonly force?: boolean;
@@ -420,9 +648,12 @@ export async function syncAkenoPosePack(options?: {
   inFlightSyncPromise = (async () => {
     await ensureAkenoPosePackLoaded();
     const config = await resolveActivePackConfig();
+    const existingTotal =
+      snapshot.poses.length + snapshot.riasSprites.length + snapshot.riasVip.length;
+
     if (!config.url) {
       return emitSnapshot({
-        status: snapshot.poses.length > 0 ? "synced" : "unconfigured",
+        status: existingTotal > 0 ? "synced" : "unconfigured",
         configSource: config.source,
         configuredUrl: null,
         hasToken: false,
@@ -472,35 +703,56 @@ export async function syncAkenoPosePack(options?: {
       posesDir.create({ idempotent: true, intermediates: true });
 
       const expectedFileNames = new Set<string>();
-      const missingEntries: Array<{
-        readonly entry: AkenoPackPoseManifestEntry;
+      const downloadQueue: Array<{
+        readonly rawUrl: string;
         readonly cacheName: string;
       }> = [];
 
       let completedCount = 0;
-      for (const entry of manifest.poses) {
-        const cacheName = buildAkenoPoseCacheFileName(entry);
+
+      const registerItem = (cacheName: string, rawUrl: string) => {
         expectedFileNames.add(cacheName);
         const existing = new File(posesDir, cacheName);
         if (existing.exists) {
           completedCount += 1;
         } else {
-          missingEntries.push({ entry, cacheName });
+          downloadQueue.push({ rawUrl, cacheName });
         }
+      };
+
+      for (const entry of manifest.poses) {
+        registerItem(
+          buildAkenoPoseCacheFileName(entry),
+          resolveAkenoPoseFileUrl(config.url, manifest.baseUrl, entry.file),
+        );
       }
+      for (const entry of manifest.riasSprites) {
+        registerItem(
+          buildRiasSpriteCacheFileName(entry),
+          resolveAkenoPoseFileUrl(config.url, undefined, entry.file),
+        );
+      }
+      for (const entry of manifest.riasVip) {
+        registerItem(
+          buildRiasVipCacheFileName(entry),
+          resolveAkenoPoseFileUrl(config.url, undefined, entry.file),
+        );
+      }
+
+      const totalAssets =
+        manifest.poses.length + manifest.riasSprites.length + manifest.riasVip.length;
 
       emitSnapshot({
         downloadedCount: completedCount,
-        totalCount: manifest.poses.length,
+        totalCount: totalAssets,
       });
 
       let failedDownloads = 0;
-      for (let i = 0; i < missingEntries.length; i += DOWNLOAD_CONCURRENCY) {
-        const batch = missingEntries.slice(i, i + DOWNLOAD_CONCURRENCY);
+      for (let i = 0; i < downloadQueue.length; i += DOWNLOAD_CONCURRENCY) {
+        const batch = downloadQueue.slice(i, i + DOWNLOAD_CONCURRENCY);
         await Promise.all(
-          batch.map(async ({ entry, cacheName }) => {
-            const rawDownloadUrl = resolveAkenoPoseFileUrl(config.url!, manifest.baseUrl, entry.file);
-            const fileRequest = buildAkenoPackRequest(rawDownloadUrl, config.token);
+          batch.map(async ({ rawUrl, cacheName }) => {
+            const fileRequest = buildAkenoPackRequest(rawUrl, config.token);
             const targetFile = new File(posesDir, cacheName);
             const tempFile = new File(posesDir, `${cacheName}.dl.tmp`);
             try {
@@ -521,11 +773,11 @@ export async function syncAkenoPosePack(options?: {
         );
         emitSnapshot({
           downloadedCount: completedCount,
-          totalCount: manifest.poses.length,
+          totalCount: totalAssets,
         });
       }
 
-      // Clean up stale cached files that are no longer referenced in manifest.json
+      // Clean up stale cached files no longer referenced in manifest.json
       try {
         for (const existing of posesDir.list()) {
           if (existing instanceof File && !expectedFileNames.has(existing.name)) {
@@ -552,19 +804,51 @@ export async function syncAkenoPosePack(options?: {
         });
       }
 
+      const readyRiasSprites: SyncedRiasSprite[] = [];
+      for (const entry of manifest.riasSprites) {
+        const localFile = new File(posesDir, buildRiasSpriteCacheFileName(entry));
+        if (!localFile.exists) continue;
+        readyRiasSprites.push({
+          id: entry.id,
+          uri: localFile.uri,
+          source: { uri: localFile.uri },
+          style: entry.style,
+          moods: entry.moods,
+          caption: entry.caption,
+        });
+      }
+
+      const readyRiasVip: SyncedRiasVipPortrait[] = [];
+      for (const entry of manifest.riasVip) {
+        const localFile = new File(posesDir, buildRiasVipCacheFileName(entry));
+        if (!localFile.exists) continue;
+        readyRiasVip.push({
+          id: entry.id,
+          uri: localFile.uri,
+          source: { uri: localFile.uri },
+          layout: entry.layout,
+          title: entry.title,
+          width: entry.width,
+          height: entry.height,
+        });
+      }
+
+      const readyTotal = readyPoses.length + readyRiasSprites.length + readyRiasVip.length;
       return emitSnapshot({
-        status: failedDownloads > 0 && readyPoses.length === 0 ? "error" : "synced",
+        status: failedDownloads > 0 && readyTotal === 0 ? "error" : "synced",
         poses: readyPoses,
-        downloadedCount: readyPoses.length,
-        totalCount: manifest.poses.length,
+        riasSprites: readyRiasSprites,
+        riasVip: readyRiasVip,
+        downloadedCount: readyTotal,
+        totalCount: totalAssets,
         lastSyncedAt: Date.now(),
         errorMessage:
           failedDownloads > 0
-            ? `Synced ${readyPoses.length}/${manifest.poses.length} poses (${failedDownloads} failed).`
+            ? `Synced ${readyTotal}/${totalAssets} assets (${failedDownloads} failed).`
             : null,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not sync pose pack.";
+      const message = error instanceof Error ? error.message : "Could not sync asset pack.";
       return emitSnapshot({
         status: "error",
         errorMessage: message,
@@ -624,7 +908,7 @@ export async function clearAkenoPackOverride(): Promise<AkenoPosePackSnapshot> {
   return snapshot;
 }
 
-/** React hook returning the live synced Akeno pose pack state and auto-syncing once on mount. */
+/** React hook returning the live synced Akeno + Rias pack state and auto-syncing once on mount. */
 export function useAkenoPosePack(options?: { readonly autoSync?: boolean }): AkenoPosePackSnapshot {
   const [state, setState] = useState<AkenoPosePackSnapshot>(getAkenoPosePackSnapshot);
 

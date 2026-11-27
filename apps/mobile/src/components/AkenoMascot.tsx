@@ -1,18 +1,21 @@
 import * as Haptics from "expo-haptics";
 import { Image, type ImageSource } from "expo-image";
-import { memo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import Animated, {
+  cancelAnimation,
   Easing,
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
 
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
+import { pickSeededItem, useAkenoPosePack } from "../lib/akenoPosePack";
 import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
 
 export type AkenoMood = "cute" | "happy" | "surprised" | "sad" | "sleepy";
@@ -104,22 +107,56 @@ export const CompanionMascotSprite = memo(function CompanionMascotSprite(props: 
   const size = props.size ?? 116;
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
+  const posePack = useAkenoPosePack({ autoSync: false });
   const { mascotPreference } = useAppearancePreferences();
   const [fallbackCharacter] = useState<CompanionCharacter>(() =>
     pickAlternatingCompanion(props.seed),
   );
+  const [tapStep, setTapStep] = useState(0);
   const character: CompanionCharacter =
     props.character ?? (mascotPreference === "random" ? fallbackCharacter : mascotPreference);
 
+  const syncedRiasSprite = useMemo(() => {
+    if (character !== "rias" || posePack.riasSprites.length === 0) return undefined;
+    const matched = posePack.riasSprites.filter((sprite) => sprite.moods.includes(props.mood));
+    const pool = matched.length > 0 ? matched : posePack.riasSprites;
+    return pickSeededItem(pool, props.seed, tapStep);
+  }, [character, posePack.riasSprites, props.mood, props.seed, tapStep]);
+
   const scale = useSharedValue(1);
+  const breathScale = useSharedValue(1);
   const tilt = useSharedValue(0);
 
+  // Subtle 165Hz living breath pulse for single-frame synced Rias sprites.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs soft idle breathing pulse on still Rias sprites
+  useEffect(() => {
+    if (!syncedRiasSprite || !appActive || reducedMotion) {
+      cancelAnimation(breathScale);
+      breathScale.set(1);
+      return;
+    }
+    breathScale.set(
+      withRepeat(
+        withSequence(
+          withTiming(1.028, { duration: 1350, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0.992, { duration: 1350, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        false,
+      ),
+    );
+    return () => cancelAnimation(breathScale);
+  }, [appActive, breathScale, reducedMotion, syncedRiasSprite]);
+
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }, { rotate: `${tilt.value}deg` }],
+    transform: [{ scale: scale.value * breathScale.value }, { rotate: `${tilt.value}deg` }],
   }));
 
   const handlePress = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (syncedRiasSprite) {
+      setTapStep((step) => step + 1);
+    }
     if (!reducedMotion) {
       scale.set(
         withSequence(
@@ -173,8 +210,9 @@ export const CompanionMascotSprite = memo(function CompanionMascotSprite(props: 
         />
       ) : null}
       <Image
-        source={COMPANION_MOOD_SOURCES[character][props.mood]}
+        source={syncedRiasSprite?.source ?? COMPANION_MOOD_SOURCES[character][props.mood]}
         autoplay={appActive && !reducedMotion}
+        transition={120}
         accessibilityIgnoresInvertColors
         contentFit="contain"
         style={{ width: size, height: size }}

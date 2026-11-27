@@ -9,6 +9,7 @@ import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandMark } from "../../components/BrandMark";
+import { RiasVipHeroCard } from "../../components/RiasVipShowcase";
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { useDeadlinePassed } from "../../lib/clock";
@@ -38,6 +39,7 @@ export function SettingsAboutRouteScreen() {
         <View className="px-1 pt-1">
           <BrandMark />
         </View>
+        <RiasVipHeroCard />
         <AppSettingsSection />
       </ScrollView>
     </SettingsScreen>

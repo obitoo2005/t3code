@@ -35,18 +35,26 @@ function AkenoPosePackCard() {
   const [tokenDraft, setTokenDraft] = useState("");
 
   const isSyncing = pack.status === "syncing";
+  const hasAnyAssets =
+    pack.poses.length > 0 || pack.riasSprites.length > 0 || pack.riasVip.length > 0;
   const statusLine = isSyncing
-    ? gt("Syncing poses ({downloaded}/{total})…", {
+    ? gt("Syncing pack ({downloaded}/{total})…", {
         downloaded: pack.downloadedCount,
         total: pack.totalCount || "…",
       })
-    : pack.poses.length > 0
-      ? gt("{count} synced poses cached • Offline ready", { count: pack.poses.length })
+    : hasAnyAssets
+      ? pack.riasSprites.length > 0 || pack.riasVip.length > 0
+        ? gt("{akeno} Akeno • {rias} Rias • {vip} VIP cached", {
+            akeno: pack.poses.length,
+            rias: pack.riasSprites.length,
+            vip: pack.riasVip.length,
+          })
+        : gt("{count} synced poses cached • Offline ready", { count: pack.poses.length })
       : pack.configuredUrl
         ? gt("Pack configured ({source}) — tap Sync to download", {
             source: pack.configSource === "custom" ? "custom" : ".env",
           })
-        : gt("6 built-in animated poses • Add pack URL to sync extras");
+        : gt("Built-in sprites only • Add pack URL to sync extras");
 
   return (
     <View
@@ -56,7 +64,7 @@ function AkenoPosePackCard() {
       <View className="flex-row items-center justify-between gap-2">
         <View className="flex-1 gap-0.5">
           <Text textRole="label" className="text-foreground">
-            {gt("Akeno pose pack")}
+            {gt("Akeno & Rias asset pack")}
           </Text>
           <Text textRole="caption" className="text-foreground-muted">
             {statusLine}
@@ -219,7 +227,7 @@ function MascotAppearanceSection() {
                   ? gt("Rei sits on your chat bar showing your live 5-hour quota banner.")
                   : gt("Hides the chat bar companion for a minimal composer.")}
             </Text>
-            {composerPet === "akeno" ? <AkenoPosePackCard /> : null}
+            <AkenoPosePackCard />
           </View>
         </SettingsSection>
       ) : null}

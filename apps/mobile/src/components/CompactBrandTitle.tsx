@@ -1,24 +1,28 @@
 import * as Haptics from "expo-haptics";
-import { Image } from "expo-image";
+import { Image, type ImageSource } from "expo-image";
 import { useGT } from "gt-react-native";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import Animated, {
+  cancelAnimation,
   Easing,
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
 
-import { useReduceMotionEnabled } from "../lib/appState";
+import { useAkenoPosePack } from "../lib/akenoPosePack";
+import { useAppActive, useReduceMotionEnabled } from "../lib/appState";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { playUiSound } from "../lib/uiSoundFx";
 import { NATIVE_WORKSPACE_COLUMNS_SUPPORTED } from "../native/NativeWorkspaceColumns";
 import { T3_CODE_BRAND_MARK_SOURCE } from "./brandAssets";
+import { RiasVipGalleryModal } from "./RiasVipShowcase";
 import { reshuffleSessionAvatars } from "./SessionAvatarIcon";
 import { AppText as Text } from "./ui/AppText";
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
@@ -119,16 +123,53 @@ export function CompactBrandTitle(
   const gt = useGT();
   const titleOffset = brandTitleOffset();
   const { scale } = useAndroidControlSizing();
+  const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
+  const posePack = useAkenoPosePack();
   const clampedScale = Math.min(scale, 1.15);
   const iconSize = Math.round(40 * clampedScale);
   const iconRadius = Math.round(11 * clampedScale);
 
   const [burstKey, setBurstKey] = useState(0);
   const [burstVisible, setBurstVisible] = useState(false);
+  const [iconIndex, setIconIndex] = useState(0);
+  const [vipOpen, setVipOpen] = useState(false);
   const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const iconScale = useSharedValue(1);
+  const iconBreath = useSharedValue(1);
   const iconTilt = useSharedValue(0);
+
+  const iconPool = useMemo<readonly ImageSource[]>(() => {
+    const bustSprites = posePack.riasSprites
+      .filter((sprite) => sprite.style === "bust")
+      .slice(0, 14)
+      .map((sprite) => sprite.source);
+    const vipPortraits = posePack.riasVip.map((vip) => vip.source);
+    return [T3_CODE_BRAND_MARK_SOURCE, ...vipPortraits, ...bustSprites];
+  }, [posePack.riasSprites, posePack.riasVip]);
+
+  const activeIconSource = iconPool[iconIndex % iconPool.length] ?? T3_CODE_BRAND_MARK_SOURCE;
+
+  // Gentle 165Hz ambient pulse on the Home Rias icon so it feels softly alive.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs subtle idle breathing pulse on brand icon
+  useEffect(() => {
+    if (!appActive || reducedMotion) {
+      cancelAnimation(iconBreath);
+      iconBreath.set(1);
+      return;
+    }
+    iconBreath.set(
+      withRepeat(
+        withSequence(
+          withTiming(1.038, { duration: 1900, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1, { duration: 1900, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        false,
+      ),
+    );
+    return () => cancelAnimation(iconBreath);
+  }, [appActive, iconBreath, reducedMotion]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- cleans up burst hide timer on unmount
   useEffect(() => {
@@ -138,13 +179,19 @@ export function CompactBrandTitle(
   }, []);
 
   const iconAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: iconScale.value }, { rotate: `${iconTilt.value}deg` }],
+    transform: [
+      { scale: iconScale.value * iconBreath.value },
+      { rotate: `${iconTilt.value}deg` },
+    ],
   }));
 
   const handleRiasIconPress = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     playUiSound("shuffle");
     reshuffleSessionAvatars();
+    if (iconPool.length > 1) {
+      setIconIndex((prev) => (prev + 1) % iconPool.length);
+    }
 
     if (!reducedMotion) {
       iconScale.set(
@@ -180,9 +227,15 @@ export function CompactBrandTitle(
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={gt("Shuffle session avatars")}
+        accessibilityLabel={gt("Shuffle session avatars and Rias icon; hold for VIP gallery")}
         hitSlop={8}
         onPress={handleRiasIconPress}
+        onLongPress={() => {
+          if (posePack.riasVip.length > 0) {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            setVipOpen(true);
+          }
+        }}
         style={{
           width: iconSize,
           height: iconSize,
@@ -216,6 +269,7 @@ export function CompactBrandTitle(
               height: iconSize,
               borderRadius: iconRadius,
               overflow: "hidden",
+              backgroundColor: "#14070D",
               borderWidth: 1,
               borderColor: "rgba(255, 255, 255, 0.22)",
               borderTopColor: "rgba(255, 255, 255, 0.34)",
@@ -232,13 +286,16 @@ export function CompactBrandTitle(
           ]}
         >
           <Image
-            source={T3_CODE_BRAND_MARK_SOURCE}
+            source={activeIconSource}
+            transition={150}
             accessibilityIgnoresInvertColors
             contentFit="cover"
+            contentPosition="top"
             style={{ width: "100%", height: "100%" }}
           />
         </Animated.View>
       </Pressable>
+      <RiasVipGalleryModal visible={vipOpen} onClose={() => setVipOpen(false)} />
       <View
         aria-level={1}
         accessibilityLabel={props.accessibilityLabel ?? gt("Rias Code, Threads")}
