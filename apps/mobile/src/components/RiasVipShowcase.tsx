@@ -32,10 +32,14 @@ import { playUiSound } from "../lib/uiSoundFx";
 import {
   appendPinDigit,
   clampSlideIndex,
+  clampVideoTime,
   clearVipVaultPin,
   computeActiveSlideIndex,
+  computeSeekTimeFromTouch,
+  computeVideoProgress,
   computeVisibleDotWindow,
   evaluatePinAttempt,
+  formatVideoTimestamp,
   isWideOrSquareMedia,
   loadVipVaultPin,
   removeLastPinDigit,
@@ -44,6 +48,7 @@ import {
   shouldPlayVipVideo,
   VIP_MAX_VISIBLE_DOTS,
   VIP_PIN_LENGTH,
+  VIP_VIDEO_SKIP_SECONDS,
   VIP_ZOOM_DOUBLE_TAP,
   VIP_ZOOM_MAX,
   VIP_ZOOM_MIN,
@@ -681,6 +686,8 @@ const VipPinManageOverlay = memo(function VipPinManageOverlay(props: {
   );
 });
 
+const VIDEO_CONTROLS_AUTO_HIDE_MS = 3800;
+
 const VipVideoSlide = memo(function VipVideoSlide(props: {
   readonly item: SyncedRiasVipPortrait;
   readonly isActive: boolean;
@@ -689,22 +696,62 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
   readonly appActive: boolean;
   readonly muted: boolean;
   readonly onToggleMuted: () => void;
+  readonly onScrubbingChange?: (scrubbing: boolean) => void;
 }) {
   const gt = useGT();
   const [userPaused, setUserPaused] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [scrubTime, setScrubTime] = useState<number | null>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
   const [prevActive, setPrevActive] = useState(props.isActive);
   if (props.isActive !== prevActive) {
     setPrevActive(props.isActive);
-    if (!props.isActive && userPaused) {
-      setUserPaused(false);
+    if (!props.isActive) {
+      if (userPaused) setUserPaused(false);
+      if (scrubTime !== null) setScrubTime(null);
+      if (!controlsVisible) setControlsVisible(true);
     }
   }
 
+  const isScrubbingRef = useRef(false);
+  const trackWidthRef = useRef(0);
+  const durationRef = useRef(0);
+  const currentTimeRef = useRef(0);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialMutedRef = useRef(props.muted);
+
   const player = useVideoPlayer(props.item.uri, (instance) => {
     instance.loop = true;
     instance.muted = initialMutedRef.current;
+    instance.timeUpdateEventInterval = 0.25;
   });
+
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current !== null) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleAutoHide = useCallback(() => {
+    clearHideTimer();
+    hideTimerRef.current = setTimeout(() => {
+      hideTimerRef.current = null;
+      if (!isScrubbingRef.current) {
+        setControlsVisible(false);
+      }
+    }, VIDEO_CONTROLS_AUTO_HIDE_MS);
+  }, [clearHideTimer]);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears pending controls auto-hide timer on unmount
+  useEffect(() => {
+    return () => {
+      clearHideTimer();
+      props.onScrubbingChange?.(false);
+    };
+  }, [clearHideTimer, props.onScrubbingChange]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps native video player mute flag aligned with the audio pill
   useEffect(() => {
@@ -714,6 +761,45 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
       // Ignore native player state errors during teardown.
     }
   }, [player, props.muted]);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tracks live video timestamp and duration from expo-video player events
+  useEffect(() => {
+    const syncDuration = (nextDuration: number) => {
+      if (Number.isFinite(nextDuration) && nextDuration > 0 && nextDuration !== durationRef.current) {
+        durationRef.current = nextDuration;
+        setDuration(nextDuration);
+      }
+    };
+    try {
+      syncDuration(player.duration);
+      if (Number.isFinite(player.currentTime) && player.currentTime >= 0) {
+        currentTimeRef.current = player.currentTime;
+        setCurrentTime(player.currentTime);
+      }
+    } catch {
+      // Ignore initial player read errors before source loads.
+    }
+
+    const timeSub = player.addListener("timeUpdate", ({ currentTime: nextTime }) => {
+      if (isScrubbingRef.current) return;
+      if (Number.isFinite(nextTime) && nextTime >= 0) {
+        currentTimeRef.current = nextTime;
+        setCurrentTime(nextTime);
+      }
+      try {
+        syncDuration(player.duration);
+      } catch {
+        // Ignore transient duration read errors.
+      }
+    });
+    const loadSub = player.addListener("sourceLoad", ({ duration: loadedDuration }) => {
+      syncDuration(loadedDuration);
+    });
+    return () => {
+      timeSub.remove();
+      loadSub.remove();
+    };
+  }, [player]);
 
   const shouldPlay = shouldPlayVipVideo({
     mediaType: props.item.mediaType,
@@ -744,19 +830,122 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
     };
   }, [player, shouldPlay]);
 
-  const isWideOrSquare = isWideOrSquareMedia(props.item.width, props.item.height);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- auto-hides video controls while actively playing and keeps them visible while paused
+  useEffect(() => {
+    if (!props.isActive || !shouldPlay || userPaused || scrubTime !== null) {
+      clearHideTimer();
+      return;
+    }
+    if (controlsVisible) {
+      scheduleAutoHide();
+    }
+    return clearHideTimer;
+  }, [clearHideTimer, controlsVisible, props.isActive, scheduleAutoHide, scrubTime, shouldPlay, userPaused]);
 
-  const handleTogglePlayPause = () => {
+  const seekToTime = useCallback(
+    (targetSeconds: number) => {
+      const clamped = clampVideoTime(targetSeconds, durationRef.current);
+      currentTimeRef.current = clamped;
+      setCurrentTime(clamped);
+      try {
+        player.currentTime = clamped;
+      } catch {
+        // Ignore seek errors during teardown.
+      }
+    },
+    [player],
+  );
+
+  const handleSkipBy = useCallback(
+    (deltaSeconds: number) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const base = scrubTime ?? currentTimeRef.current;
+      seekToTime(base + deltaSeconds);
+      setControlsVisible(true);
+      if (!userPaused) scheduleAutoHide();
+    },
+    [scheduleAutoHide, scrubTime, seekToTime, userPaused],
+  );
+
+  const handleTogglePlayPause = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setUserPaused((paused) => !paused);
-  };
+    setUserPaused((paused) => {
+      const nextPaused = !paused;
+      setControlsVisible(true);
+      if (!nextPaused) {
+        scheduleAutoHide();
+      } else {
+        clearHideTimer();
+      }
+      return nextPaused;
+    });
+  }, [clearHideTimer, scheduleAutoHide]);
+
+  const handleToggleControls = useCallback(() => {
+    setControlsVisible((visible) => {
+      const nextVisible = !visible;
+      if (nextVisible && !userPaused) {
+        scheduleAutoHide();
+      } else if (!nextVisible) {
+        clearHideTimer();
+      }
+      return nextVisible;
+    });
+  }, [clearHideTimer, scheduleAutoHide, userPaused]);
+
+  const beginScrub = useEffectEvent((touchX: number) => {
+    isScrubbingRef.current = true;
+    props.onScrubbingChange?.(true);
+    clearHideTimer();
+    setControlsVisible(true);
+    const nextSec = computeSeekTimeFromTouch(touchX, trackWidthRef.current, durationRef.current);
+    setScrubTime(nextSec);
+    void Haptics.selectionAsync();
+  });
+
+  const moveScrub = useEffectEvent((touchX: number) => {
+    const nextSec = computeSeekTimeFromTouch(touchX, trackWidthRef.current, durationRef.current);
+    setScrubTime(nextSec);
+  });
+
+  const finishScrub = useEffectEvent((touchX: number) => {
+    const nextSec = computeSeekTimeFromTouch(touchX, trackWidthRef.current, durationRef.current);
+    isScrubbingRef.current = false;
+    props.onScrubbingChange?.(false);
+    setScrubTime(null);
+    seekToTime(nextSec);
+    if (!userPaused) scheduleAutoHide();
+  });
+
+  const scrubGesture = useMemo(
+    () =>
+      // oxlint-disable-next-line react/capitalized-calls -- Gesture.Pan is a gesture factory, not a React component.
+      Gesture.Pan()
+        .minDistance(0)
+        .hitSlop({ top: 10, bottom: 10, left: 6, right: 6 })
+        .onBegin((event) => {
+          runOnJS(beginScrub)(event.x);
+        })
+        .onUpdate((event) => {
+          runOnJS(moveScrub)(event.x);
+        })
+        .onFinalize((event) => {
+          runOnJS(finishScrub)(event.x);
+        }),
+    [],
+  );
+
+  const isWideOrSquare = isWideOrSquareMedia(props.item.width, props.item.height);
+  const displayedTime = scrubTime ?? currentTime;
+  const progress = computeVideoProgress(displayedTime, duration);
+  const showHud = controlsVisible || userPaused || scrubTime !== null;
 
   return (
     <View style={{ flex: 1, backgroundColor: "#050205" }}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={userPaused ? gt("Play video") : gt("Pause video")}
-        onPress={handleTogglePlayPause}
+        accessibilityLabel={showHud ? gt("Hide video controls") : gt("Show video controls")}
+        onPress={handleToggleControls}
         style={{ flex: 1 }}
       >
         <VideoView
@@ -801,30 +990,223 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
         ) : null}
       </Pressable>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={props.muted ? gt("Unmute video audio") : gt("Mute video audio")}
-        onPress={() => {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          props.onToggleMuted();
-        }}
-        style={{
-          position: "absolute",
-          top: 14,
-          right: 14,
-          zIndex: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 999,
-          backgroundColor: "rgba(18, 6, 12, 0.84)",
-          borderWidth: 1,
-          borderColor: props.muted ? "rgba(255, 255, 255, 0.22)" : "rgba(251, 113, 133, 0.55)",
-        }}
-      >
-        <Text allowFontScaling={false} style={{ color: "#FFE4E6", fontSize: 11.5, fontWeight: "700" }}>
-          {props.muted ? gt("🔇 Muted") : gt("🔊 Sound")}
-        </Text>
-      </Pressable>
+      {showHud ? (
+        <>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={props.muted ? gt("Unmute video audio") : gt("Mute video audio")}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              props.onToggleMuted();
+              if (!userPaused) scheduleAutoHide();
+            }}
+            style={{
+              position: "absolute",
+              top: 14,
+              right: 14,
+              zIndex: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: "rgba(18, 6, 12, 0.84)",
+              borderWidth: 1,
+              borderColor: props.muted ? "rgba(255, 255, 255, 0.22)" : "rgba(251, 113, 133, 0.55)",
+            }}
+          >
+            <Text
+              allowFontScaling={false}
+              style={{ color: "#FFE4E6", fontSize: 11.5, fontWeight: "700" }}
+            >
+              {props.muted ? gt("🔇 Muted") : gt("🔊 Sound")}
+            </Text>
+          </Pressable>
+
+          <View
+            style={{
+              position: "absolute",
+              left: 12,
+              right: 12,
+              bottom: 12,
+              zIndex: 12,
+              paddingHorizontal: 14,
+              paddingTop: 10,
+              paddingBottom: 12,
+              borderRadius: 20,
+              backgroundColor: "rgba(10, 4, 8, 0.88)",
+              borderWidth: 1,
+              borderColor: "rgba(251, 113, 133, 0.34)",
+              gap: 6,
+            }}
+          >
+            <GestureDetector gesture={scrubGesture}>
+              <View
+                onLayout={(event) => {
+                  const nextW = event.nativeEvent.layout.width;
+                  if (nextW > 0) {
+                    trackWidthRef.current = nextW;
+                    setTrackWidth(nextW);
+                  }
+                }}
+                style={{
+                  height: 28,
+                  justifyContent: "center",
+                }}
+              >
+                <View
+                  style={{
+                    height: 5,
+                    borderRadius: 999,
+                    backgroundColor: "rgba(255, 255, 255, 0.2)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <View
+                    style={{
+                      width: `${Math.round(progress * 1000) / 10}%`,
+                      height: "100%",
+                      borderRadius: 999,
+                      backgroundColor: "#FB7185",
+                    }}
+                  />
+                </View>
+                {trackWidth > 0 ? (
+                  <View
+                    pointerEvents="none"
+                    style={{
+                      position: "absolute",
+                      left: Math.max(0, Math.min(trackWidth - 14, progress * trackWidth - 7)),
+                      width: 14,
+                      height: 14,
+                      borderRadius: 999,
+                      backgroundColor: "#FFF1F2",
+                      borderWidth: 2,
+                      borderColor: "#FB7185",
+                    }}
+                  />
+                ) : null}
+              </View>
+            </GestureDetector>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: -4,
+              }}
+            >
+              <Text
+                allowFontScaling={false}
+                style={{
+                  color: "#FFE4E6",
+                  fontSize: 11,
+                  fontWeight: "600",
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {formatVideoTimestamp(displayedTime)}
+              </Text>
+              <Text
+                allowFontScaling={false}
+                style={{
+                  color: "rgba(254, 205, 211, 0.7)",
+                  fontSize: 11,
+                  fontWeight: "600",
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {formatVideoTimestamp(duration)}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 16,
+                paddingTop: 2,
+              }}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={gt("Rewind 10 seconds")}
+                onPress={() => handleSkipBy(-VIP_VIDEO_SKIP_SECONDS)}
+                style={({ pressed }) => ({
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderRadius: 999,
+                  backgroundColor: pressed
+                    ? "rgba(251, 113, 133, 0.28)"
+                    : "rgba(255, 255, 255, 0.08)",
+                  borderWidth: 1,
+                  borderColor: "rgba(251, 113, 133, 0.3)",
+                })}
+              >
+                <Text
+                  allowFontScaling={false}
+                  style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}
+                >
+                  {"⏪ -10s"}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={userPaused ? gt("Play video") : gt("Pause video")}
+                onPress={handleTogglePlayPause}
+                style={({ pressed }) => ({
+                  width: 44,
+                  height: 44,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: pressed
+                    ? "rgba(225, 29, 72, 0.55)"
+                    : "rgba(225, 29, 72, 0.36)",
+                  borderWidth: 1.5,
+                  borderColor: "rgba(251, 113, 133, 0.72)",
+                })}
+              >
+                <Text
+                  allowFontScaling={false}
+                  style={{
+                    color: "#FFF1F2",
+                    fontSize: userPaused ? 17 : 15,
+                    fontWeight: "800",
+                    marginLeft: userPaused ? 2 : 0,
+                  }}
+                >
+                  {userPaused ? "▶" : "❚❚"}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={gt("Forward 10 seconds")}
+                onPress={() => handleSkipBy(VIP_VIDEO_SKIP_SECONDS)}
+                style={({ pressed }) => ({
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderRadius: 999,
+                  backgroundColor: pressed
+                    ? "rgba(251, 113, 133, 0.28)"
+                    : "rgba(255, 255, 255, 0.08)",
+                  borderWidth: 1,
+                  borderColor: "rgba(251, 113, 133, 0.3)",
+                })}
+              >
+                <Text
+                  allowFontScaling={false}
+                  style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}
+                >
+                  {"+10s ⏩"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </>
+      ) : null}
     </View>
   );
 });
@@ -1089,6 +1471,7 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
   const [stageWidth, setStageWidth] = useState(0);
   const [muted, setMuted] = useState(false);
   const [isActiveSlideZoomed, setIsActiveSlideZoomed] = useState(false);
+  const [isActiveVideoScrubbing, setIsActiveVideoScrubbing] = useState(false);
 
   if (props.visible !== prevVisible) {
     setPrevVisible(props.visible);
@@ -1096,6 +1479,7 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
       setOpenGeneration((gen) => gen + 1);
       setPinOverlay("none");
       setIsActiveSlideZoomed(false);
+      setIsActiveVideoScrubbing(false);
       setMuted(false);
       setActiveIndex(0);
     }
@@ -1145,6 +1529,7 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
       if (nextIndex !== safeActiveIndex) {
         setActiveIndex(nextIndex);
         setIsActiveSlideZoomed(false);
+        setIsActiveVideoScrubbing(false);
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     },
@@ -1199,6 +1584,9 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
                 appActive={appActive}
                 muted={muted}
                 onToggleMuted={handleToggleMuted}
+                onScrubbingChange={(scrubbing) => {
+                  if (isSlideActive) setIsActiveVideoScrubbing(scrubbing);
+                }}
               />
             ) : (
               <VipImageSlide
@@ -1334,7 +1722,7 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
                   horizontal
                   pagingEnabled
                   bounces={false}
-                  scrollEnabled={!isActiveSlideZoomed}
+                  scrollEnabled={!isActiveSlideZoomed && !isActiveVideoScrubbing}
                   showsHorizontalScrollIndicator={false}
                   keyExtractor={(item) => item.id}
                   renderItem={renderSlide}

@@ -3,13 +3,17 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   appendPinDigit,
   clampSlideIndex,
+  clampVideoTime,
   clampVipZoomScale,
   clampZoomTranslation,
   clearVipVaultPin,
   computeActiveSlideIndex,
   computeMediaAspectRatio,
+  computeSeekTimeFromTouch,
+  computeVideoProgress,
   computeVisibleDotWindow,
   evaluatePinAttempt,
+  formatVideoTimestamp,
   isValidVipPin,
   isWideOrSquareMedia,
   loadVipVaultPin,
@@ -187,5 +191,26 @@ describe("VIP Vault media framing, video playback, and zoom math", () => {
     expect(clampZoomTranslation(500, -500, 1, 300, 500)).toEqual({ x: 0, y: 0 });
     expect(clampZoomTranslation(500, -500, 2, 300, 500)).toEqual({ x: 150, y: -250 });
     expect(clampZoomTranslation(40, -60, 2, 300, 500)).toEqual({ x: 40, y: -60 });
+  });
+
+  it("clamps video seek times, maps scrubber touches, and formats timestamps", () => {
+    expect(clampVideoTime(-5, 90)).toBe(0);
+    expect(clampVideoTime(45, 90)).toBe(45);
+    expect(clampVideoTime(120, 90)).toBe(90);
+    expect(clampVideoTime(Number.NaN, 90)).toBe(0);
+
+    expect(computeVideoProgress(30, 120)).toBe(0.25);
+    expect(computeVideoProgress(150, 120)).toBe(1);
+    expect(computeVideoProgress(10, 0)).toBe(0);
+
+    expect(computeSeekTimeFromTouch(100, 200, 120)).toBe(60);
+    expect(computeSeekTimeFromTouch(150, 200, 120)).toBe(90);
+    expect(computeSeekTimeFromTouch(-20, 200, 120)).toBe(0);
+    expect(computeSeekTimeFromTouch(300, 200, 120)).toBe(120);
+
+    expect(formatVideoTimestamp(0)).toBe("0:00");
+    expect(formatVideoTimestamp(9)).toBe("0:09");
+    expect(formatVideoTimestamp(90)).toBe("1:30");
+    expect(formatVideoTimestamp(3725)).toBe("1:02:05");
   });
 });

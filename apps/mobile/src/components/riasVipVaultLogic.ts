@@ -6,6 +6,7 @@ export const VIP_ZOOM_DOUBLE_TAP = 2.25;
 export const VIP_ZOOM_SNAP_RESET_THRESHOLD = 1.05;
 export const VIP_WIDE_OR_SQUARE_RATIO = 0.92;
 export const VIP_MAX_VISIBLE_DOTS = 10;
+export const VIP_VIDEO_SKIP_SECONDS = 10;
 
 export type VipVaultGateState = "locked" | "unlocked";
 export type VipPinAttemptResult = "incomplete" | "match" | "mismatch";
@@ -179,6 +180,55 @@ export function shouldPlayVipVideo(params: {
     !params.userPaused &&
     params.appActive
   );
+}
+
+/** Clamps a video timestamp in seconds to [0, duration]. */
+export function clampVideoTime(seconds: number, duration: number): number {
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  if (safeDuration <= 0) return seconds;
+  return Math.min(seconds, safeDuration);
+}
+
+/** Computes normalized [0, 1] playback progress for the video scrubber bar. */
+export function computeVideoProgress(currentTime: number, duration: number): number {
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+  if (!Number.isFinite(currentTime) || currentTime <= 0) return 0;
+  return Math.min(1, Math.max(0, currentTime / duration));
+}
+
+/** Maps a horizontal touch X coordinate on the timeline track to a clamped target time in seconds. */
+export function computeSeekTimeFromTouch(
+  touchX: number,
+  trackWidth: number,
+  duration: number,
+): number {
+  if (
+    !Number.isFinite(touchX) ||
+    !Number.isFinite(trackWidth) ||
+    trackWidth <= 0 ||
+    !Number.isFinite(duration) ||
+    duration <= 0
+  ) {
+    return 0;
+  }
+  const ratio = Math.min(1, Math.max(0, touchX / trackWidth));
+  return ratio * duration;
+}
+
+/** Formats seconds as m:ss (or h:mm:ss when >= 1 hour) for the VIP video player HUD. */
+export function formatVideoTimestamp(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
+  const whole = Math.floor(seconds);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const secs = whole % 60;
+  const secStr = secs < 10 ? `0${secs}` : String(secs);
+  if (hours > 0) {
+    const minStr = minutes < 10 ? `0${minutes}` : String(minutes);
+    return `${hours}:${minStr}:${secStr}`;
+  }
+  return `${minutes}:${secStr}`;
 }
 
 /** Clamps a pinch zoom scale to the supported [1x, 4x] range. */
