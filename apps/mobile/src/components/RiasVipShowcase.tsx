@@ -686,8 +686,6 @@ const VipPinManageOverlay = memo(function VipPinManageOverlay(props: {
   );
 });
 
-const VIDEO_CONTROLS_AUTO_HIDE_MS = 3800;
-
 const VipVideoSlide = memo(function VipVideoSlide(props: {
   readonly item: SyncedRiasVipPortrait;
   readonly isActive: boolean;
@@ -700,7 +698,7 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
 }) {
   const gt = useGT();
   const [userPaused, setUserPaused] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
+  const [hudHidden, setHudHidden] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [scrubTime, setScrubTime] = useState<number | null>(null);
@@ -711,7 +709,7 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
     if (!props.isActive) {
       if (userPaused) setUserPaused(false);
       if (scrubTime !== null) setScrubTime(null);
-      if (!controlsVisible) setControlsVisible(true);
+      if (hudHidden) setHudHidden(false);
     }
   }
 
@@ -719,7 +717,6 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
   const trackWidthRef = useRef(0);
   const durationRef = useRef(0);
   const currentTimeRef = useRef(0);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialMutedRef = useRef(props.muted);
 
   const player = useVideoPlayer(props.item.uri, (instance) => {
@@ -728,30 +725,12 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
     instance.timeUpdateEventInterval = 0.25;
   });
 
-  const clearHideTimer = useCallback(() => {
-    if (hideTimerRef.current !== null) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleAutoHide = useCallback(() => {
-    clearHideTimer();
-    hideTimerRef.current = setTimeout(() => {
-      hideTimerRef.current = null;
-      if (!isScrubbingRef.current) {
-        setControlsVisible(false);
-      }
-    }, VIDEO_CONTROLS_AUTO_HIDE_MS);
-  }, [clearHideTimer]);
-
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears pending controls auto-hide timer on unmount
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases scroll lock when video slide unmounts
   useEffect(() => {
     return () => {
-      clearHideTimer();
       props.onScrubbingChange?.(false);
     };
-  }, [clearHideTimer, props.onScrubbingChange]);
+  }, [props.onScrubbingChange]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps native video player mute flag aligned with the audio pill
   useEffect(() => {
@@ -770,15 +749,19 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
         setDuration(nextDuration);
       }
     };
-    try {
-      syncDuration(player.duration);
-      if (Number.isFinite(player.currentTime) && player.currentTime >= 0) {
-        currentTimeRef.current = player.currentTime;
-        setCurrentTime(player.currentTime);
+    const pollPlayerClock = () => {
+      if (isScrubbingRef.current) return;
+      try {
+        syncDuration(player.duration);
+        if (Number.isFinite(player.currentTime) && player.currentTime >= 0) {
+          currentTimeRef.current = player.currentTime;
+          setCurrentTime(player.currentTime);
+        }
+      } catch {
+        // Ignore transient native player reads before source loads.
       }
-    } catch {
-      // Ignore initial player read errors before source loads.
-    }
+    };
+    pollPlayerClock();
 
     const timeSub = player.addListener("timeUpdate", ({ currentTime: nextTime }) => {
       if (isScrubbingRef.current) return;
@@ -795,7 +778,9 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
     const loadSub = player.addListener("sourceLoad", ({ duration: loadedDuration }) => {
       syncDuration(loadedDuration);
     });
+    const fallbackTimer = setInterval(pollPlayerClock, 500);
     return () => {
+      clearInterval(fallbackTimer);
       timeSub.remove();
       loadSub.remove();
     };
@@ -830,18 +815,6 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
     };
   }, [player, shouldPlay]);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- auto-hides video controls while actively playing and keeps them visible while paused
-  useEffect(() => {
-    if (!props.isActive || !shouldPlay || userPaused || scrubTime !== null) {
-      clearHideTimer();
-      return;
-    }
-    if (controlsVisible) {
-      scheduleAutoHide();
-    }
-    return clearHideTimer;
-  }, [clearHideTimer, controlsVisible, props.isActive, scheduleAutoHide, scrubTime, shouldPlay, userPaused]);
-
   const seekToTime = useCallback(
     (targetSeconds: number) => {
       const clamped = clampVideoTime(targetSeconds, durationRef.current);
@@ -861,43 +834,18 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const base = scrubTime ?? currentTimeRef.current;
       seekToTime(base + deltaSeconds);
-      setControlsVisible(true);
-      if (!userPaused) scheduleAutoHide();
     },
-    [scheduleAutoHide, scrubTime, seekToTime, userPaused],
+    [scrubTime, seekToTime],
   );
 
   const handleTogglePlayPause = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setUserPaused((paused) => {
-      const nextPaused = !paused;
-      setControlsVisible(true);
-      if (!nextPaused) {
-        scheduleAutoHide();
-      } else {
-        clearHideTimer();
-      }
-      return nextPaused;
-    });
-  }, [clearHideTimer, scheduleAutoHide]);
-
-  const handleToggleControls = useCallback(() => {
-    setControlsVisible((visible) => {
-      const nextVisible = !visible;
-      if (nextVisible && !userPaused) {
-        scheduleAutoHide();
-      } else if (!nextVisible) {
-        clearHideTimer();
-      }
-      return nextVisible;
-    });
-  }, [clearHideTimer, scheduleAutoHide, userPaused]);
+    setUserPaused((paused) => !paused);
+  }, []);
 
   const beginScrub = useEffectEvent((touchX: number) => {
     isScrubbingRef.current = true;
     props.onScrubbingChange?.(true);
-    clearHideTimer();
-    setControlsVisible(true);
     const nextSec = computeSeekTimeFromTouch(touchX, trackWidthRef.current, durationRef.current);
     setScrubTime(nextSec);
     void Haptics.selectionAsync();
@@ -914,7 +862,6 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
     props.onScrubbingChange?.(false);
     setScrubTime(null);
     seekToTime(nextSec);
-    if (!userPaused) scheduleAutoHide();
   });
 
   const scrubGesture = useMemo(
@@ -938,14 +885,14 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
   const isWideOrSquare = isWideOrSquareMedia(props.item.width, props.item.height);
   const displayedTime = scrubTime ?? currentTime;
   const progress = computeVideoProgress(displayedTime, duration);
-  const showHud = controlsVisible || userPaused || scrubTime !== null;
+  const showHud = !hudHidden || userPaused || scrubTime !== null;
 
   return (
     <View style={{ flex: 1, backgroundColor: "#050205" }}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={showHud ? gt("Hide video controls") : gt("Show video controls")}
-        onPress={handleToggleControls}
+        accessibilityLabel={userPaused ? gt("Play video") : gt("Pause video")}
+        onPress={handleTogglePlayPause}
         style={{ flex: 1 }}
       >
         <VideoView
@@ -990,222 +937,250 @@ const VipVideoSlide = memo(function VipVideoSlide(props: {
         ) : null}
       </Pressable>
 
-      {showHud ? (
-        <>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={props.muted ? gt("Unmute video audio") : gt("Mute video audio")}
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              props.onToggleMuted();
-              if (!userPaused) scheduleAutoHide();
-            }}
-            style={{
-              position: "absolute",
-              top: 14,
-              right: 14,
-              zIndex: 12,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 999,
-              backgroundColor: "rgba(18, 6, 12, 0.84)",
-              borderWidth: 1,
-              borderColor: props.muted ? "rgba(255, 255, 255, 0.22)" : "rgba(251, 113, 133, 0.55)",
-            }}
-          >
-            <Text
-              allowFontScaling={false}
-              style={{ color: "#FFE4E6", fontSize: 11.5, fontWeight: "700" }}
-            >
-              {props.muted ? gt("🔇 Muted") : gt("🔊 Sound")}
-            </Text>
-          </Pressable>
+      {/* Top-left explicit HUD hide/show toggle + top-right sound pill */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={showHud ? gt("Hide video controls") : gt("Show video controls")}
+        onPress={() => {
+          void Haptics.selectionAsync();
+          setHudHidden((hidden) => !hidden);
+        }}
+        style={{
+          position: "absolute",
+          top: 14,
+          left: 14,
+          zIndex: 24,
+          elevation: 24,
+          paddingHorizontal: 11,
+          paddingVertical: 6,
+          borderRadius: 999,
+          backgroundColor: "rgba(18, 6, 12, 0.84)",
+          borderWidth: 1,
+          borderColor: "rgba(255, 255, 255, 0.18)",
+        }}
+      >
+        <Text
+          allowFontScaling={false}
+          style={{ color: "rgba(255, 228, 230, 0.88)", fontSize: 11, fontWeight: "700" }}
+        >
+          {showHud ? gt("Hide HUD") : gt("Controls")}
+        </Text>
+      </Pressable>
 
-          <View
-            style={{
-              position: "absolute",
-              left: 12,
-              right: 12,
-              bottom: 12,
-              zIndex: 12,
-              paddingHorizontal: 14,
-              paddingTop: 10,
-              paddingBottom: 12,
-              borderRadius: 20,
-              backgroundColor: "rgba(10, 4, 8, 0.88)",
-              borderWidth: 1,
-              borderColor: "rgba(251, 113, 133, 0.34)",
-              gap: 6,
-            }}
-          >
-            <GestureDetector gesture={scrubGesture}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={props.muted ? gt("Unmute video audio") : gt("Mute video audio")}
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          props.onToggleMuted();
+        }}
+        style={{
+          position: "absolute",
+          top: 14,
+          right: 14,
+          zIndex: 24,
+          elevation: 24,
+          paddingHorizontal: 12,
+          paddingVertical: 6,
+          borderRadius: 999,
+          backgroundColor: "rgba(18, 6, 12, 0.84)",
+          borderWidth: 1,
+          borderColor: props.muted ? "rgba(255, 255, 255, 0.22)" : "rgba(251, 113, 133, 0.55)",
+        }}
+      >
+        <Text
+          allowFontScaling={false}
+          style={{ color: "#FFE4E6", fontSize: 11.5, fontWeight: "700" }}
+        >
+          {props.muted ? gt("🔇 Muted") : gt("🔊 Sound")}
+        </Text>
+      </Pressable>
+
+      {showHud ? (
+        <View
+          style={{
+            marginHorizontal: 12,
+            marginBottom: 12,
+            marginTop: 4,
+            zIndex: 24,
+            elevation: 24,
+            paddingHorizontal: 14,
+            paddingTop: 10,
+            paddingBottom: 12,
+            borderRadius: 20,
+            backgroundColor: "rgba(14, 6, 11, 0.96)",
+            borderWidth: 1,
+            borderColor: "rgba(251, 113, 133, 0.36)",
+            gap: 6,
+          }}
+        >
+          <GestureDetector gesture={scrubGesture}>
+            <View
+              onLayout={(event) => {
+                const nextW = event.nativeEvent.layout.width;
+                if (nextW > 0) {
+                  trackWidthRef.current = nextW;
+                  setTrackWidth(nextW);
+                }
+              }}
+              style={{
+                height: 30,
+                justifyContent: "center",
+              }}
+            >
               <View
-                onLayout={(event) => {
-                  const nextW = event.nativeEvent.layout.width;
-                  if (nextW > 0) {
-                    trackWidthRef.current = nextW;
-                    setTrackWidth(nextW);
-                  }
-                }}
                 style={{
-                  height: 28,
-                  justifyContent: "center",
+                  height: 5,
+                  borderRadius: 999,
+                  backgroundColor: "rgba(255, 255, 255, 0.22)",
+                  overflow: "hidden",
                 }}
               >
                 <View
                   style={{
-                    height: 5,
+                    width: `${Math.round(progress * 1000) / 10}%`,
+                    height: "100%",
                     borderRadius: 999,
-                    backgroundColor: "rgba(255, 255, 255, 0.2)",
-                    overflow: "hidden",
+                    backgroundColor: "#FB7185",
                   }}
-                >
-                  <View
-                    style={{
-                      width: `${Math.round(progress * 1000) / 10}%`,
-                      height: "100%",
-                      borderRadius: 999,
-                      backgroundColor: "#FB7185",
-                    }}
-                  />
-                </View>
-                {trackWidth > 0 ? (
-                  <View
-                    pointerEvents="none"
-                    style={{
-                      position: "absolute",
-                      left: Math.max(0, Math.min(trackWidth - 14, progress * trackWidth - 7)),
-                      width: 14,
-                      height: 14,
-                      borderRadius: 999,
-                      backgroundColor: "#FFF1F2",
-                      borderWidth: 2,
-                      borderColor: "#FB7185",
-                    }}
-                  />
-                ) : null}
+                />
               </View>
-            </GestureDetector>
+              {trackWidth > 0 ? (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: "absolute",
+                    left: Math.max(0, Math.min(trackWidth - 14, progress * trackWidth - 7)),
+                    width: 14,
+                    height: 14,
+                    borderRadius: 999,
+                    backgroundColor: "#FFF1F2",
+                    borderWidth: 2,
+                    borderColor: "#FB7185",
+                  }}
+                />
+              ) : null}
+            </View>
+          </GestureDetector>
 
-            <View
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginTop: -4,
+            }}
+          >
+            <Text
+              allowFontScaling={false}
               style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginTop: -4,
+                color: "#FFE4E6",
+                fontSize: 11,
+                fontWeight: "600",
+                fontVariant: ["tabular-nums"],
               }}
+            >
+              {formatVideoTimestamp(displayedTime)}
+            </Text>
+            <Text
+              allowFontScaling={false}
+              style={{
+                color: "rgba(254, 205, 211, 0.72)",
+                fontSize: 11,
+                fontWeight: "600",
+                fontVariant: ["tabular-nums"],
+              }}
+            >
+              {formatVideoTimestamp(duration)}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 16,
+              paddingTop: 2,
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={gt("Rewind 10 seconds")}
+              onPress={() => handleSkipBy(-VIP_VIDEO_SKIP_SECONDS)}
+              style={({ pressed }) => ({
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+                borderRadius: 999,
+                backgroundColor: pressed
+                  ? "rgba(251, 113, 133, 0.28)"
+                  : "rgba(255, 255, 255, 0.08)",
+                borderWidth: 1,
+                borderColor: "rgba(251, 113, 133, 0.3)",
+              })}
             >
               <Text
                 allowFontScaling={false}
-                style={{
-                  color: "#FFE4E6",
-                  fontSize: 11,
-                  fontWeight: "600",
-                  fontVariant: ["tabular-nums"],
-                }}
+                style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}
               >
-                {formatVideoTimestamp(displayedTime)}
+                {"⏪ -10s"}
               </Text>
-              <Text
-                allowFontScaling={false}
-                style={{
-                  color: "rgba(254, 205, 211, 0.7)",
-                  fontSize: 11,
-                  fontWeight: "600",
-                  fontVariant: ["tabular-nums"],
-                }}
-              >
-                {formatVideoTimestamp(duration)}
-              </Text>
-            </View>
+            </Pressable>
 
-            <View
-              style={{
-                flexDirection: "row",
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={userPaused ? gt("Play video") : gt("Pause video")}
+              onPress={handleTogglePlayPause}
+              style={({ pressed }) => ({
+                width: 44,
+                height: 44,
+                borderRadius: 999,
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 16,
-                paddingTop: 2,
-              }}
+                backgroundColor: pressed
+                  ? "rgba(225, 29, 72, 0.55)"
+                  : "rgba(225, 29, 72, 0.36)",
+                borderWidth: 1.5,
+                borderColor: "rgba(251, 113, 133, 0.72)",
+              })}
             >
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={gt("Rewind 10 seconds")}
-                onPress={() => handleSkipBy(-VIP_VIDEO_SKIP_SECONDS)}
-                style={({ pressed }) => ({
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 999,
-                  backgroundColor: pressed
-                    ? "rgba(251, 113, 133, 0.28)"
-                    : "rgba(255, 255, 255, 0.08)",
-                  borderWidth: 1,
-                  borderColor: "rgba(251, 113, 133, 0.3)",
-                })}
+              <Text
+                allowFontScaling={false}
+                style={{
+                  color: "#FFF1F2",
+                  fontSize: userPaused ? 17 : 15,
+                  fontWeight: "800",
+                  marginLeft: userPaused ? 2 : 0,
+                }}
               >
-                <Text
-                  allowFontScaling={false}
-                  style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}
-                >
-                  {"⏪ -10s"}
-                </Text>
-              </Pressable>
+                {userPaused ? "▶" : "❚❚"}
+              </Text>
+            </Pressable>
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={userPaused ? gt("Play video") : gt("Pause video")}
-                onPress={handleTogglePlayPause}
-                style={({ pressed }) => ({
-                  width: 44,
-                  height: 44,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: pressed
-                    ? "rgba(225, 29, 72, 0.55)"
-                    : "rgba(225, 29, 72, 0.36)",
-                  borderWidth: 1.5,
-                  borderColor: "rgba(251, 113, 133, 0.72)",
-                })}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={gt("Forward 10 seconds")}
+              onPress={() => handleSkipBy(VIP_VIDEO_SKIP_SECONDS)}
+              style={({ pressed }) => ({
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+                borderRadius: 999,
+                backgroundColor: pressed
+                  ? "rgba(251, 113, 133, 0.28)"
+                  : "rgba(255, 255, 255, 0.08)",
+                borderWidth: 1,
+                borderColor: "rgba(251, 113, 133, 0.3)",
+              })}
+            >
+              <Text
+                allowFontScaling={false}
+                style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}
               >
-                <Text
-                  allowFontScaling={false}
-                  style={{
-                    color: "#FFF1F2",
-                    fontSize: userPaused ? 17 : 15,
-                    fontWeight: "800",
-                    marginLeft: userPaused ? 2 : 0,
-                  }}
-                >
-                  {userPaused ? "▶" : "❚❚"}
-                </Text>
-              </Pressable>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={gt("Forward 10 seconds")}
-                onPress={() => handleSkipBy(VIP_VIDEO_SKIP_SECONDS)}
-                style={({ pressed }) => ({
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 999,
-                  backgroundColor: pressed
-                    ? "rgba(251, 113, 133, 0.28)"
-                    : "rgba(255, 255, 255, 0.08)",
-                  borderWidth: 1,
-                  borderColor: "rgba(251, 113, 133, 0.3)",
-                })}
-              >
-                <Text
-                  allowFontScaling={false}
-                  style={{ color: "#FFE4E6", fontSize: 12, fontWeight: "700" }}
-                >
-                  {"+10s ⏩"}
-                </Text>
-              </Pressable>
-            </View>
+                {"+10s ⏩"}
+              </Text>
+            </Pressable>
           </View>
-        </>
+        </View>
       ) : null}
     </View>
   );

@@ -631,11 +631,11 @@ export function subscribeAkenoPosePack(listener: () => void): () => void {
 }
 
 async function getPackDirectories() {
-  const { Directory, File, Paths } = await import("expo-file-system");
+  const { Directory, DownloadTask, File, Paths } = await import("expo-file-system");
   const rootDir = new Directory(Paths.document, PACK_DIR_NAME);
   const posesDir = new Directory(rootDir, PACK_POSES_SUBDIR);
   const manifestFile = new File(rootDir, PACK_MANIFEST_FILE);
-  return { Directory, File, rootDir, posesDir, manifestFile };
+  return { Directory, DownloadTask, File, rootDir, posesDir, manifestFile };
 }
 
 async function readCachedAssetsFromDisk(): Promise<{
@@ -834,25 +834,30 @@ export async function syncAkenoPosePack(options?: {
         });
       }
 
-      const { File, rootDir, posesDir, manifestFile } = await getPackDirectories();
+      const { DownloadTask, File, rootDir, posesDir, manifestFile } = await getPackDirectories();
       rootDir.create({ idempotent: true, intermediates: true });
       posesDir.create({ idempotent: true, intermediates: true });
 
       const expectedFileNames = new Set<string>();
-      const downloadQueue: Array<{
+      interface DownloadQueueEntry {
         readonly rawUrl: string;
         readonly cacheName: string;
-      }> = [];
+        readonly isLargeMedia: boolean;
+      }
+      const smallQueue: DownloadQueueEntry[] = [];
+      const largeQueue: DownloadQueueEntry[] = [];
 
       let completedCount = 0;
 
-      const registerItem = (cacheName: string, rawUrl: string) => {
+      const registerItem = (cacheName: string, rawUrl: string, isLargeMedia = false) => {
         expectedFileNames.add(cacheName);
         const existing = new File(posesDir, cacheName);
         if (existing.exists) {
           completedCount += 1;
+        } else if (isLargeMedia) {
+          largeQueue.push({ rawUrl, cacheName, isLargeMedia: true });
         } else {
-          downloadQueue.push({ rawUrl, cacheName });
+          smallQueue.push({ rawUrl, cacheName, isLargeMedia: false });
         }
       };
 
@@ -878,6 +883,7 @@ export async function syncAkenoPosePack(options?: {
         registerItem(
           buildRiasVipCacheFileName(entry),
           resolveAkenoPoseFileUrl(config.url, undefined, entry.file),
+          inferRiasVipMediaType(entry.file, entry.mediaType) === "video",
         );
       }
       for (const entry of manifest.voices) {
@@ -900,29 +906,71 @@ export async function syncAkenoPosePack(options?: {
       });
 
       let failedDownloads = 0;
-      for (let i = 0; i < downloadQueue.length; i += DOWNLOAD_CONCURRENCY) {
-        const batch = downloadQueue.slice(i, i + DOWNLOAD_CONCURRENCY);
-        await Promise.all(
-          batch.map(async ({ rawUrl, cacheName }) => {
-            const fileRequest = buildAkenoPackRequest(rawUrl, config.token);
-            const targetFile = new File(posesDir, cacheName);
-            const tempFile = new File(posesDir, `${cacheName}.dl.tmp`);
-            try {
-              if (tempFile.exists) tempFile.delete();
+      let lastFailureReason: string | null = null;
+
+      const downloadOneEntry = async ({ rawUrl, cacheName, isLargeMedia }: DownloadQueueEntry) => {
+        const fileRequest = buildAkenoPackRequest(rawUrl, config.token);
+        const targetFile = new File(posesDir, cacheName);
+        const tempFile = new File(posesDir, `${cacheName}.dl.tmp`);
+        const maxAttempts = isLargeMedia ? 3 : 2;
+        let lastError: unknown = null;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          try {
+            if (tempFile.exists) tempFile.delete();
+            if (isLargeMedia && typeof DownloadTask === "function") {
+              // DownloadTask uses a 60s OkHttp read/connect timeout on Android (vs 10s on File.downloadFileAsync).
+              const task = new DownloadTask(fileRequest.url, tempFile, {
+                headers: { ...fileRequest.headers },
+              });
+              try {
+                const downloaded = await task.downloadAsync();
+                if (!downloaded || !tempFile.exists) {
+                  throw new Error("Incomplete download");
+                }
+              } finally {
+                try {
+                  task.release();
+                } catch {}
+              }
+            } else {
               await File.downloadFileAsync(fileRequest.url, tempFile, {
                 headers: { ...fileRequest.headers },
                 idempotent: true,
               });
-              tempFile.moveSync(targetFile, { overwrite: true });
-              completedCount += 1;
-            } catch {
-              failedDownloads += 1;
-              try {
-                if (tempFile.exists) tempFile.delete();
-              } catch {}
             }
-          }),
-        );
+            tempFile.moveSync(targetFile, { overwrite: true });
+            completedCount += 1;
+            return;
+          } catch (error) {
+            lastError = error;
+            try {
+              if (tempFile.exists) tempFile.delete();
+            } catch {}
+            if (attempt < maxAttempts) {
+              await new Promise<void>((resolve) => setTimeout(resolve, attempt * 900));
+            }
+          }
+        }
+
+        failedDownloads += 1;
+        if (lastError instanceof Error && lastError.message.trim().length > 0) {
+          lastFailureReason = lastError.message.trim().slice(0, 96);
+        }
+      };
+
+      for (let i = 0; i < smallQueue.length; i += DOWNLOAD_CONCURRENCY) {
+        const batch = smallQueue.slice(i, i + DOWNLOAD_CONCURRENCY);
+        await Promise.all(batch.map(downloadOneEntry));
+        emitSnapshot({
+          downloadedCount: completedCount,
+          totalCount: totalAssets,
+        });
+      }
+
+      // Download large videos sequentially (1 at a time) so mobile bandwidth isn't split across multiple 25MB+ files.
+      for (const entry of largeQueue) {
+        await downloadOneEntry(entry);
         emitSnapshot({
           downloadedCount: completedCount,
           totalCount: totalAssets,
@@ -1031,7 +1079,9 @@ export async function syncAkenoPosePack(options?: {
         lastSyncedAt: Date.now(),
         errorMessage:
           failedDownloads > 0
-            ? `Synced ${readyTotal}/${totalAssets} assets (${failedDownloads} failed).`
+            ? lastFailureReason
+              ? `Synced ${readyTotal}/${totalAssets} assets (${failedDownloads} failed: ${lastFailureReason}).`
+              : `Synced ${readyTotal}/${totalAssets} assets (${failedDownloads} failed).`
             : null,
       });
     } catch (error) {
