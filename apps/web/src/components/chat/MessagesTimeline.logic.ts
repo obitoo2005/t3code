@@ -29,8 +29,9 @@ import {
   toolGroupAction,
   toolGroupSummaryKind,
   contextCompactionTokenCounts,
-  workEntriesViewedImagePaths,
+  workEntriesViewedImages,
   type ToolGroupSummaryKind,
+  type ViewedImage,
   liveThoughtLine,
   workEntryHiddenByToolCallVisibility,
 } from "@t3tools/client-runtime/work-log/presentation";
@@ -382,6 +383,27 @@ export function resolveTimelineMinimapTopPercent(index: number, itemCount: numbe
   return (Math.max(0, Math.min(index, itemCount - 1)) / (itemCount - 1)) * 100;
 }
 
+// Strips are 2px tall; centers 4px apart or closer merge into one bar once layout
+// rounds their positions.
+const TIMELINE_MINIMAP_MIN_MARK_SPACING = 5;
+
+/** Strips that fit the measured rail; past that, neighbouring items share one. */
+export function resolveTimelineMinimapMarkCount(itemCount: number, railHeight: number): number {
+  if (railHeight <= 0) return itemCount;
+  const capacity = Math.floor(railHeight / TIMELINE_MINIMAP_MIN_MARK_SPACING) + 1;
+  return Math.min(itemCount, Math.max(2, capacity));
+}
+
+/** The strip nearest the item's own position on the rail. */
+export function resolveTimelineMinimapMarkIndex(
+  itemIndex: number,
+  itemCount: number,
+  markCount: number,
+): number {
+  if (markCount >= itemCount) return itemIndex;
+  return Math.round((itemIndex / (itemCount - 1)) * (markCount - 1));
+}
+
 export function resolveTimelineMinimapIndexFromPointer(input: {
   readonly itemCount: number;
   readonly railTop: number;
@@ -583,7 +605,7 @@ type MessagesTimelineRowContent =
       kind: "viewed-images";
       id: string;
       createdAt: string;
-      paths: ReadonlyArray<string>;
+      images: ReadonlyArray<ViewedImage>;
     }
   | {
       kind: "turn-fold";
@@ -710,10 +732,10 @@ function viewedImagesRows(
   createdAt: string,
   groupedEntries: ReadonlyArray<WorkLogEntry>,
 ): Array<Extract<MessagesTimelineRow, { kind: "viewed-images" }>> {
-  const paths = workEntriesViewedImagePaths(groupedEntries);
-  return paths.length === 0
+  const images = workEntriesViewedImages(groupedEntries);
+  return images.length === 0
     ? []
-    : [{ kind: "viewed-images", id: `${groupId}:viewed-images`, createdAt, paths }];
+    : [{ kind: "viewed-images", id: `${groupId}:viewed-images`, createdAt, images }];
 }
 
 export function resolveAssistantMessageCopyState({
@@ -2766,7 +2788,7 @@ export function computeStableMessagesTimelineRows(
 }
 
 function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean {
-  if (a.kind !== b.kind || a.id !== b.id) return false;
+  if (a.kind !== b.kind || a.id !== b.id || a.continuesWorkLog !== b.continuesWorkLog) return false;
 
   switch (a.kind) {
     case "working":
@@ -2782,8 +2804,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.label === bt.label
       );
     }
-    case "worktree-setup":
-      return a.snapshot === (b as typeof a).snapshot;
+    case "worktree-setup": {
+      const bw = b as typeof a;
+      return a.snapshot === bw.snapshot && a.embedded === bw.embedded;
+    }
 
     case "assistant-meta": {
       const bm = b as typeof a;
@@ -2829,8 +2853,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       const bv = b as typeof a;
       return (
         a.createdAt === bv.createdAt &&
-        a.paths.length === bv.paths.length &&
-        a.paths.every((path, index) => path === bv.paths[index])
+        a.images.length === bv.images.length &&
+        a.images.every(
+          (image, index) =>
+            image.path === bv.images[index]?.path && image.pending === bv.images[index]?.pending,
+        )
       );
     }
 

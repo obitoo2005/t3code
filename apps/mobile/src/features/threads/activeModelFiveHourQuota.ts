@@ -6,7 +6,6 @@ import type {
   UsageLimitsReport,
 } from "@t3tools/contracts";
 import {
-  antigravityWindowLimitsModel,
   collectProviderUsageLimits,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
@@ -42,8 +41,12 @@ function windowMatchesModel(
     const prefix = model.split("/")[0] ?? "";
     if (!window.providerIds.includes(prefix)) return false;
   }
-  if (driver === "antigravity") {
-    return antigravityWindowLimitsModel(window, model);
+  if (driver === "antigravity" && window.modelIds === undefined) {
+    const windowId = window.id.toLowerCase();
+    const slugLower = baseSlug.toLowerCase();
+    if (windowId && windowId !== "session" && windowId !== "primary") {
+      return windowId.includes(slugLower) || slugLower.includes(windowId);
+    }
   }
   if (driver === "opencode" && window.id.startsWith("go_")) {
     return model.startsWith("opencode-go/");
