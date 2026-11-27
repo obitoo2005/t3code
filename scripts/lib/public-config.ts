@@ -15,6 +15,8 @@ export interface T3CodePublicConfig {
   readonly relayClientOtlpTracesUrl: string | undefined;
   readonly relayClientOtlpTracesDataset: string | undefined;
   readonly relayClientOtlpTracesToken: string | undefined;
+  readonly akenoPackUrl: string | undefined;
+  readonly akenoPackToken: string | undefined;
 }
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -98,6 +100,18 @@ export function loadRepoEnv({
           VITE_RELAY_OTLP_TRACES_TOKEN: config.relayClientOtlpTracesToken,
         }
       : {}),
+    ...(config.akenoPackUrl
+      ? {
+          T3CODE_AKENO_PACK_URL: config.akenoPackUrl,
+          EXPO_PUBLIC_AKENO_PACK_URL: config.akenoPackUrl,
+        }
+      : {}),
+    ...(config.akenoPackToken
+      ? {
+          T3CODE_AKENO_PACK_TOKEN: config.akenoPackToken,
+          EXPO_PUBLIC_AKENO_PACK_TOKEN: config.akenoPackToken,
+        }
+      : {}),
   };
 }
 
@@ -150,6 +164,16 @@ function resolvePublicConfig(...sources: readonly Environment[]): T3CodePublicCo
       sources,
       "T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN",
       "VITE_RELAY_OTLP_TRACES_TOKEN",
+    ),
+    akenoPackUrl: firstNonEmpty(
+      sources,
+      "T3CODE_AKENO_PACK_URL",
+      "EXPO_PUBLIC_AKENO_PACK_URL",
+    ),
+    akenoPackToken: firstNonEmpty(
+      sources,
+      "T3CODE_AKENO_PACK_TOKEN",
+      "EXPO_PUBLIC_AKENO_PACK_TOKEN",
     ),
   };
 }

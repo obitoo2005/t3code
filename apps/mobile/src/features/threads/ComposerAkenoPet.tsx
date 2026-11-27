@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { Image, type ImageSource } from "expo-image";
 import { useGT } from "gt-react-native";
-import { memo, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -19,13 +19,22 @@ import Animated, {
 
 import { isLateNightHour } from "../../components/AkenoMascot";
 import { AppText as Text } from "../../components/ui/AppText";
+import { type SyncedAkenoPose, useAkenoPosePack } from "../../lib/akenoPosePack";
 import { useAppActive, useReduceMotionEnabled } from "../../lib/appState";
 import { playUiSound } from "../../lib/uiSoundFx";
 import { subscribeCompanionWhisper } from "./activeThreadComposerBridge";
 
-export type ComposerAkenoPose = "idle" | "walk" | "working" | "happy" | "sleepy" | "picked";
+export type ComposerAkenoCorePose =
+  | "idle"
+  | "walk"
+  | "working"
+  | "happy"
+  | "sleepy"
+  | "picked";
 
-const AKENO_PET_SOURCES: Readonly<Record<ComposerAkenoPose, ImageSource>> = {
+export type ComposerAkenoPose = ComposerAkenoCorePose | (string & {});
+
+const AKENO_CORE_SOURCES: Readonly<Record<ComposerAkenoCorePose, ImageSource>> = {
   idle: require("../../../assets/akeno-pet-idle.webp"),
   walk: require("../../../assets/akeno-pet-walk.webp"),
   working: require("../../../assets/akeno-pet-working.webp"),
@@ -34,14 +43,103 @@ const AKENO_PET_SOURCES: Readonly<Record<ComposerAkenoPose, ImageSource>> = {
   picked: require("../../../assets/akeno-pet-picked.webp"),
 };
 
+const CORE_POSE_WHISPERS: Readonly<Partial<Record<ComposerAkenoCorePose, string>>> = {
+  idle: "Ara ara~ ♥",
+  happy: "Hehe~ ✨",
+  sleepy: "So cozy~ 💤",
+};
+
+interface AkenoPoseCatalog {
+  readonly sourceByPose: Readonly<Record<string, ImageSource>>;
+  readonly showcasePoses: readonly string[];
+  readonly settlePoses: readonly string[];
+  readonly celebrationPoses: readonly string[];
+  readonly sleepyPoses: readonly string[];
+  readonly sleepyPoseSet: ReadonlySet<string>;
+  readonly standingPoseSet: ReadonlySet<string>;
+  readonly perchedStaticPoseSet: ReadonlySet<string>;
+  readonly whisperByPose: Readonly<Record<string, string>>;
+}
+
+function buildAkenoPoseCatalog(syncedPoses: readonly SyncedAkenoPose[]): AkenoPoseCatalog {
+  const sourceByPose: Record<string, ImageSource> = { ...AKENO_CORE_SOURCES };
+  const whisperByPose: Record<string, string> = {};
+  for (const [key, value] of Object.entries(CORE_POSE_WHISPERS)) {
+    if (value) whisperByPose[key] = value;
+  }
+
+  const syncedShowcase: string[] = [];
+  const settlePoses: string[] = ["idle"];
+  const celebrationPoses: string[] = ["happy"];
+  const sleepyPoses: string[] = ["sleepy"];
+  const standingPoseSet = new Set<string>();
+  const perchedStaticPoseSet = new Set<string>();
+
+  for (const entry of syncedPoses) {
+    if (entry.id in AKENO_CORE_SOURCES) continue;
+    sourceByPose[entry.id] = entry.source;
+    if (entry.whisper) {
+      whisperByPose[entry.id] = entry.whisper;
+    }
+    if (entry.stance === "standing") {
+      standingPoseSet.add(entry.id);
+    } else {
+      perchedStaticPoseSet.add(entry.id);
+    }
+    if (entry.roles.includes("showcase")) syncedShowcase.push(entry.id);
+    if (entry.roles.includes("settle")) settlePoses.push(entry.id);
+    if (entry.roles.includes("celebration")) celebrationPoses.push(entry.id);
+    if (entry.roles.includes("sleepy")) sleepyPoses.push(entry.id);
+  }
+
+  const showcasePoses: string[] = ["idle"];
+  const happyInsertIndex = Math.min(14, syncedShowcase.length);
+  for (let i = 0; i < syncedShowcase.length; i += 1) {
+    if (i === happyInsertIndex) {
+      showcasePoses.push("happy");
+    }
+    showcasePoses.push(syncedShowcase[i]!);
+  }
+  if (!showcasePoses.includes("happy")) {
+    showcasePoses.push("happy");
+  }
+  showcasePoses.push("sleepy");
+
+  return {
+    sourceByPose,
+    showcasePoses,
+    settlePoses,
+    celebrationPoses,
+    sleepyPoses,
+    sleepyPoseSet: new Set(sleepyPoses),
+    standingPoseSet,
+    perchedStaticPoseSet,
+    whisperByPose,
+  };
+}
+
+function isRestingPose(pose: string): boolean {
+  return pose !== "walk" && pose !== "working" && pose !== "picked";
+}
+
+function pickRandomPose(pool: readonly string[], exclude: string): string {
+  const candidates = pool.filter((candidate) => candidate !== exclude);
+  if (candidates.length === 0) return exclude;
+  return candidates[Math.floor(Math.random() * candidates.length)]!;
+}
+
 const EDGE_MARGIN = 18;
 const WALK_SPEED_DP_PER_SEC = 74;
 const AFK_SLEEP_MS = 90_000;
 const DOUBLE_TAP_WINDOW_MS = 340;
 const WALK_RIM_LIFT_DP = -13;
+const STAND_RIM_LIFT_DP = -12;
+const PERCH_RIM_LIFT_DP = -7;
 const PICK_UP_HOLD_MS = 160;
 const PICK_UP_LIFT_DP = -22;
 const MANUAL_PLACE_HOLD_MS = 45_000;
+const AUTO_POSE_MIN_MS = 14_000;
+const AUTO_POSE_VARIANCE_MS = 12_000;
 
 const TAP_SPRING = {
   damping: 11,
@@ -100,14 +198,10 @@ const DONE_WHISPERS: readonly string[] = [
 ];
 
 /**
- * Interactive 165Hz roaming pixel-art Akeno pet perched on the top rim of the chat composer.
- * - Default pose: user's sitting Akeno with pixel blink & gentle sway.
- * - Roams autonomously right <-> left along the composer edge (auto-mirrored walk cycle).
- * - Switches to Working pose (mini glowing lavender laptop) whenever the chat is busy.
- * - Celebrates with Happy wink & hearts when a reply finishes or when tapped.
- * - Dozes into Sleepy Zzz pose late at night (11 PM–6 AM) or after 90s AFK.
- * - Single tap: giggle bounce + wink + whisper; Double tap: walk to opposite side.
- * - Press & hold + drag: pick Akeno up with dangling pendulum physics & drop her anywhere on the bar.
+ * Interactive 165Hz roaming Akeno pet perched on the top rim of the chat composer.
+ * - Bundled core poses (idle, walk, working, happy, sleepy, picked) work 100% offline.
+ * - Extra chibi poses sync dynamically from the configured `.env` or Settings pose pack
+ *   into permanent local device storage so new poses arrive without rebuilding the APK.
  */
 export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   readonly stageWidth: number;
@@ -119,6 +213,8 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   const gt = useGT();
   const appActive = useAppActive();
   const reducedMotion = useReduceMotionEnabled();
+  const posePack = useAkenoPosePack();
+  const catalog = useMemo(() => buildAkenoPoseCatalog(posePack.poses), [posePack.poses]);
   const size = props.size ?? 74;
 
   const maxX = Math.max(EDGE_MARGIN, props.stageWidth - size - EDGE_MARGIN);
@@ -139,12 +235,14 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   const manualHoldUntilRef = useRef(0);
   const lastTapAtRef = useRef(0);
   const whisperIndexRef = useRef(0);
+  const poseIndexRef = useRef(0);
   const pickupWhisperIndexRef = useRef(0);
   const dropWhisperIndexRef = useRef(0);
   const prevBusyRef = useRef(props.activeThreadBusy);
 
   const walkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const roamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const poseCycleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const happyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const whisperTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const afkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,6 +259,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   const dangleWobbleDeg = useSharedValue(0);
   const squashScaleX = useSharedValue(1);
   const squashScaleY = useSharedValue(1);
+  const breathScaleY = useSharedValue(1);
   const lastDragFacingShared = useSharedValue<1 | -1>(1);
   const lastOnRightShared = useSharedValue(true);
 
@@ -169,6 +268,11 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
   const seatLiftY = useSharedValue(0);
   const tiltDeg = useSharedValue(0);
   const popScale = useSharedValue(1);
+
+  const effectivePose = pose in catalog.sourceByPose ? pose : "idle";
+  const isCurrentStaticPose =
+    catalog.standingPoseSet.has(effectivePose) ||
+    catalog.perchedStaticPoseSet.has(effectivePose);
 
   const clearTimer = (ref: { current: ReturnType<typeof setTimeout> | null }) => {
     if (ref.current !== null) {
@@ -280,15 +384,13 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
         walkingRef.current = false;
         cancelAnimation(walkBobY);
         walkBobY.set(withTiming(0, { duration: 110, reduceMotion: ReduceMotion.System }));
-        // Turn gently inward toward the middle of the chat bar when sitting down!
         const settledOnLeft = clampedTarget < (EDGE_MARGIN + maxX) / 2;
         const settledFacing: 1 | -1 = settledOnLeft ? -1 : 1;
         setFacing(settledFacing);
         lastDragFacingShared.set(settledFacing);
         lastOnRightShared.set(!settledOnLeft);
         setWhisperOnLeft(!settledOnLeft);
-        setPose("idle");
-        // Cute little sit-down settle hop
+        setPose(pickRandomPose(catalog.settlePoses, "walk"));
         jumpY.set(
           withSequence(
             withTiming(-4.5, { duration: 90, easing: Easing.out(Easing.cubic) }),
@@ -300,6 +402,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     [
       appActive,
       canRoam,
+      catalog.settlePoses,
       jumpY,
       lastDragFacingShared,
       lastOnRightShared,
@@ -321,6 +424,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
 
     if (props.activeThreadBusy) {
       clearTimer(roamTimerRef);
+      clearTimer(poseCycleTimerRef);
       clearTimer(happyTimerRef);
       clearTimer(afkTimerRef);
       stopWalking("working");
@@ -336,7 +440,8 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     }
 
     if (wasBusy && !props.activeThreadBusy) {
-      stopWalking("happy");
+      const donePose = pickRandomPose(catalog.celebrationPoses, "working");
+      stopWalking(donePose);
       const msg = DONE_WHISPERS[whisperIndexRef.current % DONE_WHISPERS.length]!;
       whisperIndexRef.current += 1;
       showWhisper(msg, 2800);
@@ -357,27 +462,91 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
       clearTimer(happyTimerRef);
       happyTimerRef.current = setTimeout(() => {
         happyTimerRef.current = null;
-        if (!draggingRef.current) setPose("idle");
+        if (!draggingRef.current) setPose(pickRandomPose(catalog.settlePoses, donePose));
       }, 3600);
     }
-  }, [jumpY, popScale, props.activeThreadBusy, reducedMotion, showWhisper, stopWalking]);
+  }, [
+    catalog.celebrationPoses,
+    catalog.settlePoses,
+    jumpY,
+    popScale,
+    props.activeThreadBusy,
+    reducedMotion,
+    showWhisper,
+    stopWalking,
+  ]);
 
   // Subtle curious tilt when the user is typing in the composer; gently wake if sleepy.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tilts Akeno curiously while typing and wakes from sleepy pose
   useEffect(() => {
     if (draggingRef.current) return;
     if (props.isTyping && !props.activeThreadBusy) {
-      if (pose === "sleepy") setPose("idle");
+      if (catalog.sleepyPoseSet.has(effectivePose)) setPose("idle");
       if (!reducedMotion) {
         tiltDeg.set(withSpring(facing === 1 ? -4 : 4, TAP_SPRING));
       }
     } else if (!reducedMotion) {
       tiltDeg.set(withSpring(0, TAP_SPRING));
     }
-  }, [facing, pose, props.activeThreadBusy, props.isTyping, reducedMotion, tiltDeg]);
+  }, [
+    catalog.sleepyPoseSet,
+    effectivePose,
+    facing,
+    props.activeThreadBusy,
+    props.isTyping,
+    reducedMotion,
+    tiltDeg,
+  ]);
 
-  // Autonomous roaming scheduler while idle (occasionally strolls right <-> left or center on her own!).
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- schedules occasional autonomous right <-> left strolls when idle
+  // Autonomous pose cycler: periodically shifts between all synced poses and core idle/happy/sleepy poses!
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- periodically auto-changes Akeno's pose while hanging out on the chat bar
+  useEffect(() => {
+    clearTimer(poseCycleTimerRef);
+    if (
+      !appActive ||
+      props.activeThreadBusy ||
+      props.isTyping ||
+      !isRestingPose(effectivePose) ||
+      draggingRef.current
+    ) {
+      return;
+    }
+    const delayMs = AUTO_POSE_MIN_MS + Math.floor(Math.random() * AUTO_POSE_VARIANCE_MS);
+    poseCycleTimerRef.current = setTimeout(() => {
+      poseCycleTimerRef.current = null;
+      if (draggingRef.current || walkingRef.current) return;
+      const nextPose = pickRandomPose(catalog.showcasePoses, effectivePose);
+      setPose(nextPose);
+      if (!reducedMotion) {
+        jumpY.set(
+          withSequence(
+            withTiming(-5, { duration: 95, easing: Easing.out(Easing.cubic) }),
+            withSpring(0, TAP_SPRING),
+          ),
+        );
+        popScale.set(
+          withSequence(
+            withTiming(1.07, { duration: 85, easing: Easing.out(Easing.cubic) }),
+            withSpring(1, TAP_SPRING),
+          ),
+        );
+      }
+    }, delayMs);
+
+    return () => clearTimer(poseCycleTimerRef);
+  }, [
+    appActive,
+    catalog.showcasePoses,
+    effectivePose,
+    jumpY,
+    popScale,
+    props.activeThreadBusy,
+    props.isTyping,
+    reducedMotion,
+  ]);
+
+  // Autonomous roaming scheduler while resting (occasionally strolls right <-> left or center on her own!).
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- schedules occasional autonomous right <-> left strolls when resting
   useEffect(() => {
     clearTimer(roamTimerRef);
     if (
@@ -386,54 +555,111 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
       !canRoam ||
       props.activeThreadBusy ||
       props.isTyping ||
-      pose !== "idle" ||
+      !isRestingPose(effectivePose) ||
       draggingRef.current
     ) {
       return;
     }
     const holdRemainingMs = Math.max(0, manualHoldUntilRef.current - Date.now());
-    const baseDelayMs = 15_000 + Math.floor(Math.random() * 14_000);
+    const baseDelayMs = 22_000 + Math.floor(Math.random() * 16_000);
     const delayMs = Math.max(holdRemainingMs, baseDelayMs);
     roamTimerRef.current = setTimeout(() => {
       roamTimerRef.current = null;
       if (draggingRef.current) return;
       const midX = (EDGE_MARGIN + maxX) / 2;
       const onRight = posXRef.current > midX;
-      // 75% stroll all the way across (right <-> left), 25% perch near center!
       const goCenter = Math.random() < 0.25 && Math.abs(posXRef.current - midX) > 48;
       const targetX = goCenter ? midX : onRight ? EDGE_MARGIN : maxX;
       startWalkTo(targetX);
     }, delayMs);
 
     return () => clearTimer(roamTimerRef);
-  }, [appActive, canRoam, maxX, pose, props.activeThreadBusy, props.isTyping, reducedMotion, startWalkTo]);
+  }, [
+    appActive,
+    canRoam,
+    effectivePose,
+    maxX,
+    props.activeThreadBusy,
+    props.isTyping,
+    reducedMotion,
+    startWalkTo,
+  ]);
 
   // Gentle AFK sleepy transition after 90s of total inactivity.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- settles Akeno into cozy sleepy pose after extended inactivity
   useEffect(() => {
     clearTimer(afkTimerRef);
-    if (!appActive || props.activeThreadBusy || props.isTyping || pose !== "idle" || draggingRef.current) {
+    if (
+      !appActive ||
+      props.activeThreadBusy ||
+      props.isTyping ||
+      !isRestingPose(effectivePose) ||
+      catalog.sleepyPoseSet.has(effectivePose) ||
+      draggingRef.current
+    ) {
       return;
     }
     afkTimerRef.current = setTimeout(() => {
       afkTimerRef.current = null;
-      if (!draggingRef.current) setPose("sleepy");
+      if (!draggingRef.current) setPose(pickRandomPose(catalog.sleepyPoses, effectivePose));
     }, AFK_SLEEP_MS);
 
     return () => clearTimer(afkTimerRef);
-  }, [appActive, pose, props.activeThreadBusy, props.isTyping]);
+  }, [
+    appActive,
+    catalog.sleepyPoseSet,
+    catalog.sleepyPoses,
+    effectivePose,
+    props.activeThreadBusy,
+    props.isTyping,
+  ]);
 
-  // Lift Akeno up onto the top glass rim while walking, and lower her so her uncropped loafers
-  // dangle naturally over the front glass edge when seated.
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- smoothly adjusts vertical ledge alignment between walking and sitting poses
+  // Align each pose cleanly onto the top composer glass rim.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- smoothly adjusts vertical ledge alignment per pose
   useEffect(() => {
-    const targetLift = pose === "walk" ? WALK_RIM_LIFT_DP : 0;
+    const targetLift =
+      effectivePose === "walk"
+        ? WALK_RIM_LIFT_DP
+        : catalog.standingPoseSet.has(effectivePose)
+          ? STAND_RIM_LIFT_DP
+          : catalog.perchedStaticPoseSet.has(effectivePose)
+            ? PERCH_RIM_LIFT_DP
+            : 0;
     if (reducedMotion) {
       seatLiftY.set(targetLift);
       return;
     }
     seatLiftY.set(withSpring(targetLift, TAP_SPRING));
-  }, [pose, reducedMotion, seatLiftY]);
+  }, [
+    catalog.perchedStaticPoseSet,
+    catalog.standingPoseSet,
+    effectivePose,
+    reducedMotion,
+    seatLiftY,
+  ]);
+
+  // Subtle 165Hz living breath pulse for single-frame poses so every pose feels softly alive.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs gentle idle breathing pulse on still poses
+  useEffect(() => {
+    if (!appActive || reducedMotion || !isCurrentStaticPose) {
+      cancelAnimation(breathScaleY);
+      breathScaleY.set(1);
+      return;
+    }
+    breathScaleY.set(
+      withRepeat(
+        withSequence(
+          withTiming(1.024, { duration: 1250, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0.992, { duration: 1250, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        false,
+      ),
+    );
+    return () => {
+      cancelAnimation(breathScaleY);
+    };
+  }, [appActive, breathScaleY, isCurrentStaticPose, reducedMotion]);
 
   // Celebrate daily prompt milestones & quick-save toasts emitted from the composer or feed!
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to celebratory companion whispers and plays happy bounce reaction
@@ -472,6 +698,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
     return () => {
       clearTimer(walkTimerRef);
       clearTimer(roamTimerRef);
+      clearTimer(poseCycleTimerRef);
       clearTimer(happyTimerRef);
       clearTimer(whisperTimerRef);
       clearTimer(afkTimerRef);
@@ -523,16 +750,20 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
       return;
     }
 
-    stopWalking("happy");
-    const nextWhisper = TAP_WHISPERS[whisperIndexRef.current % TAP_WHISPERS.length]!;
-    whisperIndexRef.current += 1;
-    showWhisper(nextWhisper, 2400);
-
     clearTimer(happyTimerRef);
-    happyTimerRef.current = setTimeout(() => {
-      happyTimerRef.current = null;
-      if (!draggingRef.current) setPose("idle");
-    }, 3200);
+    clearTimer(poseCycleTimerRef);
+    const pool = catalog.showcasePoses;
+    poseIndexRef.current = (poseIndexRef.current + 1) % pool.length;
+    let nextPose = pool[poseIndexRef.current]!;
+    if (nextPose === effectivePose && pool.length > 1) {
+      poseIndexRef.current = (poseIndexRef.current + 1) % pool.length;
+      nextPose = pool[poseIndexRef.current]!;
+    }
+    stopWalking(nextPose);
+
+    const fallbackWhisper = TAP_WHISPERS[whisperIndexRef.current % TAP_WHISPERS.length]!;
+    whisperIndexRef.current += 1;
+    showWhisper(catalog.whisperByPose[nextPose] ?? fallbackWhisper, 2400);
   });
 
   const handlePickUpStart = useEffectEvent((currentX: number) => {
@@ -542,6 +773,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
 
     clearTimer(walkTimerRef);
     clearTimer(roamTimerRef);
+    clearTimer(poseCycleTimerRef);
     clearTimer(happyTimerRef);
     clearTimer(afkTimerRef);
     clearTimer(settleTimerRef);
@@ -625,7 +857,6 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
           dragLiftY.value = PICK_UP_LIFT_DP * 0.7;
         } else {
           dragLiftY.value = withSpring(PICK_UP_LIFT_DP, PICK_UP_SPRING);
-          // Cute upward "yoink!" collar-stretch when lifted!
           squashScaleX.value = withSequence(
             withTiming(0.9, { duration: 85, easing: Easing.out(Easing.cubic) }),
             withSpring(1, PICK_UP_SPRING),
@@ -634,7 +865,6 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
             withTiming(1.12, { duration: 85, easing: Easing.out(Easing.cubic) }),
             withSpring(1, PICK_UP_SPRING),
           );
-          // Gentle looping pendulum dangle while held in midair
           dangleWobbleDeg.value = withSequence(
             withTiming(-5.5, { duration: 190, easing: Easing.inOut(Easing.sin) }),
             withRepeat(
@@ -666,7 +896,6 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
         dragOffsetY.value = clampedY;
 
         if (!reducedMotionShared.value) {
-          // Pendulum trail: dragging right (+velocityX) swings feet smoothly left (+deg).
           const targetSwing = Math.min(22, Math.max(-22, event.velocityX * 0.022));
           dragSwingDeg.value = withSpring(targetSwing, SWING_SPRING);
         }
@@ -705,7 +934,6 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
             reduceMotion: ReduceMotion.System,
           });
           dangleWobbleDeg.value = withSpring(0, TAP_SPRING);
-          // Juicy squash-and-stretch cushion bounce as she lands back on the rim!
           squashScaleX.value = withSequence(
             withTiming(0.95, { duration: 60, easing: Easing.in(Easing.quad) }),
             withTiming(1.16, { duration: 85, easing: Easing.out(Easing.cubic) }),
@@ -764,7 +992,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
         { rotate: `${totalTilt}deg` },
         { translateY: pivotY },
         { scaleX: popScale.value * squashScaleX.value },
-        { scaleY: popScale.value * squashScaleY.value },
+        { scaleY: popScale.value * squashScaleY.value * breathScaleY.value },
       ],
     };
   });
@@ -887,7 +1115,7 @@ export const ComposerAkenoPet = memo(function ComposerAkenoPet(props: {
                 }}
               >
                 <Image
-                  source={AKENO_PET_SOURCES[pose]}
+                  source={catalog.sourceByPose[effectivePose] ?? AKENO_CORE_SOURCES.idle}
                   autoplay={shouldAnimateWebp}
                   transition={110}
                   accessibilityIgnoresInvertColors

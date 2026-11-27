@@ -47,6 +47,8 @@ jobs:
       ORG_GRADLE_PROJECT_reactNativeArchitectures: ${{ inputs.architectures || 'arm64-v8a' }}
       ENABLE_T3_CONNECT: ${{ (github.event_name != 'workflow_dispatch' || inputs.enable_t3_connect) && 'true' || 'false' }}
       T3CODE_MOBILE_UPDATES_ENABLED: "0"
+      T3CODE_AKENO_PACK_URL: ${{ secrets.T3CODE_AKENO_PACK_URL || vars.T3CODE_AKENO_PACK_URL }}
+      T3CODE_AKENO_PACK_TOKEN: ${{ secrets.T3CODE_AKENO_PACK_TOKEN }}
       NODE_OPTIONS: --max-old-space-size=8192
       EXPO_NO_GIT_STATUS: "1"
       CCACHE_DIR: /home/runner/.cache/ccache

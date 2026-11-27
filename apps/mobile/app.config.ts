@@ -492,6 +492,10 @@ const config: ExpoConfig = {
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
+    akenoPack: {
+      url: repoEnv.T3CODE_AKENO_PACK_URL ?? repoEnv.EXPO_PUBLIC_AKENO_PACK_URL ?? null,
+      token: repoEnv.T3CODE_AKENO_PACK_TOKEN ?? repoEnv.EXPO_PUBLIC_AKENO_PACK_TOKEN ?? null,
+    },
     eas: {
       projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
       observe: { endpointUrl: observeEndpointUrl },
