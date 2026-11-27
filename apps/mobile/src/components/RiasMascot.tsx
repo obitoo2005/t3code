@@ -27,7 +27,6 @@ import {
   type CompanionCharacter,
   type CompanionMood,
 } from "./AkenoMascot";
-import { RiasVipGalleryModal } from "./RiasVipShowcase";
 import { AppText as Text } from "./ui/AppText";
 
 export const RIAS_IDLE_MASCOT_SOURCE = RIAS_MOOD_SOURCES.cute;
@@ -91,7 +90,6 @@ export const RiasMascot = memo(function RiasMascot(props: {
   const [lateNight] = useState(() => isLateNightHour());
   const [greeting] = useState(() => getTimeOfDayGreeting());
   const [tapStep, setTapStep] = useState(0);
-  const [vipOpen, setVipOpen] = useState(false);
 
   const scale = useSharedValue(1);
   const breathScale = useSharedValue(1);
@@ -198,12 +196,6 @@ export const RiasMascot = memo(function RiasMascot(props: {
         accessibilityRole="button"
         accessibilityLabel={activeCharacter === "akeno" ? "Akeno mascot" : "Rias mascot"}
         onPress={handlePress}
-        onLongPress={() => {
-          if (posePack.riasVip.length > 0) {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            setVipOpen(true);
-          }
-        }}
         hitSlop={8}
         className="items-center justify-center"
       >
@@ -269,36 +261,8 @@ export const RiasMascot = memo(function RiasMascot(props: {
               {currentSlide.caption}
             </Text>
           ) : null}
-          {posePack.riasVip.length > 0 ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open Rias VIP gallery"
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                playUiSound("shuffle");
-                setVipOpen(true);
-              }}
-              style={{
-                marginTop: 8,
-                paddingHorizontal: 12,
-                paddingVertical: 4,
-                borderRadius: 999,
-                backgroundColor: "rgba(225, 29, 72, 0.16)",
-                borderWidth: 1,
-                borderColor: "rgba(251, 113, 133, 0.36)",
-              }}
-            >
-              <Text
-                allowFontScaling={false}
-                style={{ color: "#FFE4E6", fontSize: 11, fontWeight: "700" }}
-              >
-                Rias VIP ✦
-              </Text>
-            </Pressable>
-          ) : null}
         </View>
       ) : null}
-      <RiasVipGalleryModal visible={vipOpen} onClose={() => setVipOpen(false)} />
     </View>
   );
 });

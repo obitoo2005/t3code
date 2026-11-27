@@ -201,6 +201,10 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
 
   if (!props.visible || !active) return null;
 
+  const isWideOrSquare = Boolean(
+    active.width && active.height && active.width >= active.height * 0.92,
+  );
+
   return (
     <Modal
       visible={props.visible}
@@ -212,9 +216,9 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
       <View
         style={{
           flex: 1,
-          backgroundColor: "rgba(5, 2, 5, 0.94)",
+          backgroundColor: "rgba(5, 2, 5, 0.96)",
           justifyContent: "center",
-          paddingHorizontal: 18,
+          paddingHorizontal: 16,
           paddingVertical: 44,
         }}
       >
@@ -242,40 +246,65 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={gt("Next VIP Rias portrait")}
+          accessibilityLabel={gt("Next VIP Rias item")}
           onPress={() => {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             playUiSound("shuffle");
             setIndex((prev) => (prev + 1) % items.length);
           }}
           style={{
-            flex: 1,
-            maxHeight: 680,
+            width: "100%",
+            ...(isWideOrSquare ? { flexShrink: 1 } : { flex: 1, maxHeight: 680 }),
             borderRadius: 28,
             overflow: "hidden",
             borderWidth: 1,
             borderColor: "rgba(225, 29, 72, 0.42)",
-            backgroundColor: "#0A0408",
+            backgroundColor: "#080307",
           }}
         >
-          <Image
-            source={active.source}
-            contentFit="cover"
-            contentPosition="top"
-            transition={220}
-            accessibilityIgnoresInvertColors
-            style={{ width: "100%", height: "100%" }}
-          />
+          {isWideOrSquare ? (
+            <View
+              style={{
+                width: "100%",
+                aspectRatio: Math.max(0.92, Math.min(16 / 9, active.width! / active.height!)),
+                backgroundColor: "#050205",
+              }}
+            >
+              <Image
+                source={active.source}
+                autoplay
+                contentFit="contain"
+                contentPosition="center"
+                transition={220}
+                accessibilityIgnoresInvertColors
+                style={{ width: "100%", height: "100%" }}
+              />
+            </View>
+          ) : (
+            <Image
+              source={active.source}
+              autoplay
+              contentFit="cover"
+              contentPosition="top"
+              transition={220}
+              accessibilityIgnoresInvertColors
+              style={{ width: "100%", height: "100%" }}
+            />
+          )}
           <View
             pointerEvents="none"
             style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: 0,
+              ...(isWideOrSquare
+                ? {}
+                : {
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                  }),
               paddingHorizontal: 18,
-              paddingVertical: 16,
-              backgroundColor: "rgba(8, 3, 7, 0.78)",
+              paddingVertical: 15,
+              backgroundColor: "rgba(8, 3, 7, 0.84)",
               borderTopWidth: 1,
               borderTopColor: "rgba(255, 255, 255, 0.08)",
               flexDirection: "row",
@@ -295,7 +324,7 @@ export const RiasVipGalleryModal = memo(function RiasVipGalleryModal(props: {
                 allowFontScaling={false}
                 style={{ color: "rgba(254, 205, 211, 0.78)", fontSize: 11.5 }}
               >
-                {gt("Tap photo for next VIP portrait ({current}/{total})", {
+                {gt("Tap to switch ({current}/{total})", {
                   current: (index % items.length) + 1,
                   total: items.length,
                 })}

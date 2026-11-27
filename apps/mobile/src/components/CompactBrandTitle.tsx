@@ -144,9 +144,8 @@ export function CompactBrandTitle(
       .filter((sprite) => sprite.style === "bust")
       .slice(0, 14)
       .map((sprite) => sprite.source);
-    const vipPortraits = posePack.riasVip.map((vip) => vip.source);
-    return [T3_CODE_BRAND_MARK_SOURCE, ...vipPortraits, ...bustSprites];
-  }, [posePack.riasSprites, posePack.riasVip]);
+    return [T3_CODE_BRAND_MARK_SOURCE, ...bustSprites];
+  }, [posePack.riasSprites]);
 
   const activeIconSource = iconPool[iconIndex % iconPool.length] ?? T3_CODE_BRAND_MARK_SOURCE;
 
