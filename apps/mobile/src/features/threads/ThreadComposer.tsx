@@ -1147,51 +1147,27 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
             <Animated.View
               entering={FadeInDown.duration(160)}
               exiting={FadeOutUp.duration(130)}
-              style={{
-                marginHorizontal: 10,
-                marginTop: 4,
-                marginBottom: 4,
-                paddingVertical: 7,
-                paddingLeft: 10,
-                paddingRight: 8,
-                borderRadius: 14,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 9,
-                backgroundColor:
-                  pendingReplyQuote.author === "Rias"
-                    ? "rgba(251, 113, 133, 0.09)"
-                    : "rgba(192, 132, 252, 0.09)",
-                borderWidth: 1,
-                borderColor:
-                  pendingReplyQuote.author === "Rias"
-                    ? "rgba(251, 113, 133, 0.3)"
-                    : "rgba(192, 132, 252, 0.3)",
-              }}
+              className="mx-2.5 my-1 flex-row items-center gap-2.5 rounded-[14px] border border-border bg-subtle py-[7px] pl-2.5 pr-2"
             >
-              <View
-                style={{
-                  width: 3,
-                  alignSelf: "stretch",
-                  borderRadius: 999,
-                  backgroundColor:
-                    pendingReplyQuote.author === "Rias" ? "#FB7185" : "#C084FC",
-                }}
-              />
-              <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                <Text
-                  allowFontScaling={false}
-                  numberOfLines={1}
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: "700",
-                    color: pendingReplyQuote.author === "Rias" ? "#FDA4AF" : "#D8B4FE",
-                  }}
-                >
-                  {pendingReplyQuote.author === "Rias"
-                    ? gt("↩ Replying to Rias")
-                    : gt("↩ Replying to You")}
-                </Text>
+              <View className="w-[3px] self-stretch rounded-full bg-foreground/80" />
+              <View className="min-w-0 flex-1 gap-0.5">
+                <View className="flex-row items-center gap-1">
+                  <SymbolView
+                    name="arrow.uturn.backward"
+                    size={12}
+                    tintColorClassName="accent-foreground"
+                    type="monochrome"
+                  />
+                  <Text
+                    allowFontScaling={false}
+                    numberOfLines={1}
+                    className="flex-1 text-[11.5px] font-t3-semibold text-foreground"
+                  >
+                    {pendingReplyQuote.author === "Rias"
+                      ? gt("Replying to Rias")
+                      : gt("Replying to You")}
+                  </Text>
+                </View>
                 <Text
                   allowFontScaling={false}
                   numberOfLines={1}
@@ -1208,21 +1184,14 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   void Haptics.selectionAsync();
                   setComposerReplyQuoteForDraft(composerDraftKey, null);
                 }}
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "rgba(255, 255, 255, 0.08)",
-                }}
+                className="size-6 items-center justify-center rounded-full bg-subtle-strong"
               >
-                <Text
-                  allowFontScaling={false}
-                  style={{ fontSize: 12, fontWeight: "700", color: "rgba(255, 255, 255, 0.72)" }}
-                >
-                  ✕
-                </Text>
+                <SymbolView
+                  name="xmark"
+                  size={12}
+                  tintColorClassName="accent-foreground-muted"
+                  type="monochrome"
+                />
               </Pressable>
             </Animated.View>
           ) : null}

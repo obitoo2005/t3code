@@ -12,7 +12,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 
-import { AppText as Text } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
 
 const SWIPE_TRIGGER_THRESHOLD_DP = 44;
 const SWIPE_MAX_DRAG_DP = 64;
@@ -59,10 +59,19 @@ export function formatSwipeQuoteText(rawText: string): string | null {
 }
 
 /**
- * Collapses a quoted message into a crisp single-line preview for the Telegram-style reply bar.
+ * Collapses a quoted message into a crisp single-line preview for the Telegram-style reply bar,
+ * stripping common Markdown punctuation so the bar reads cleanly.
  */
 export function formatSwipeReplyPreview(rawText: string): string | null {
-  const collapsed = rawText.replace(/\s+/g, " ").trim();
+  const cleaned = rawText
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[\t ]*[-*+]\s+/gm, "")
+    .replace(/^>\s?/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1");
+  const collapsed = cleaned.replace(/\s+/g, " ").trim();
   if (collapsed.length === 0) return null;
   return collapsed.length > SWIPE_PREVIEW_MAX_CHARS
     ? `${collapsed.slice(0, SWIPE_PREVIEW_MAX_CHARS).trimEnd()}…`
@@ -205,7 +214,12 @@ export const SwipeToQuoteWrapper = memo(function SwipeToQuoteWrapper(
           importantForAccessibility="no-hide-descendants"
           style={[styles.badge, styles.badgeRight, rightBadgeStyle]}
         >
-          <Text style={styles.badgeIcon}>↩</Text>
+          <SymbolView
+            name="arrow.uturn.backward"
+            size={15}
+            tintColor="#F8FAFC"
+            type="monochrome"
+          />
         </Animated.View>
       ) : null}
       {allowRight ? (
@@ -215,7 +229,12 @@ export const SwipeToQuoteWrapper = memo(function SwipeToQuoteWrapper(
           importantForAccessibility="no-hide-descendants"
           style={[styles.badge, styles.badgeLeft, leftBadgeStyle]}
         >
-          <Text style={styles.badgeIcon}>↩</Text>
+          <SymbolView
+            name="arrow.uturn.backward"
+            size={15}
+            tintColor="#F8FAFC"
+            type="monochrome"
+          />
         </Animated.View>
       ) : null}
       <GestureDetector gesture={panGesture}>
@@ -237,11 +256,12 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(244, 63, 94, 0.2)",
+    backgroundColor: "rgba(30, 30, 38, 0.88)",
     borderWidth: 1,
-    borderColor: "rgba(192, 132, 252, 0.55)",
-    shadowColor: "#F43F5E",
-    shadowOpacity: 0.35,
+    borderColor: "rgba(255, 255, 255, 0.16)",
+    borderTopColor: "rgba(255, 255, 255, 0.3)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.32,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
   },
@@ -250,11 +270,5 @@ const styles = StyleSheet.create({
   },
   badgeLeft: {
     left: 10,
-  },
-  badgeIcon: {
-    color: "#FDA4AF",
-    fontSize: 15,
-    fontWeight: "700",
-    lineHeight: 17,
   },
 });
